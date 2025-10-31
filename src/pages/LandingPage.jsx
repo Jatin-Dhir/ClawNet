@@ -1,0 +1,25 @@
+import React from 'react';
+import { useOutletContext } from 'react-router-dom';
+import Hero from '../components/Hero';
+import About from '../components/About';
+import Products from '../components/Products';
+import Blog from '../components/Blog';
+import Stats from '../components/Stats';
+import CommunityIntro from '../components/community/CommunityIntro';
+
+const LandingPage = () => {
+  const { onSignInClick, triggerTransition } = useOutletContext();
+
+  return (
+    <>
+      <Hero onJoinClick={() => triggerTransition(onSignInClick)} />
+      <About />
+      <Products />
+      <Blog />
+      <CommunityIntro onSignInClick={onSignInClick} triggerTransition={triggerTransition} />
+      <Stats />
+    </>
+  );
+};
+
+export default LandingPage;

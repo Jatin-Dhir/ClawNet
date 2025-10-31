@@ -1,0 +1,539 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Terminal, X, Command } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
+const ClawNetTerminal = ({ isOpen, onClose }) => {
+  const [input, setInput] = useState('');
+  const [history, setHistory] = useState([]);
+  const [commandHistory, setCommandHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isGlitching, setIsGlitching] = useState(false);
+  const inputRef = useRef(null);
+  const navigate = useNavigate();
+  const typingIntervalsRef = useRef([]);
+
+  const triggerGlitchEffect = () => {
+    setIsGlitching(true);
+    document.body.classList.add('glitch-effect');
+    setTimeout(() => {
+      setIsGlitching(false);
+      document.body.classList.remove('glitch-effect');
+    }, 2500);
+  };
+
+  const commands = {
+    connect: {
+      portlock: () => {
+        addOutput('Connecting to Portlock system...');
+        const textLength = 'Connecting to Portlock system...'.length;
+        const typingTime = textLength * 15 + 300;
+        setTimeout(() => {
+          addOutput('Connection established.', 'output', 0);
+          setTimeout(() => navigate('/tools/portlock'), 500);
+        }, typingTime);
+      },
+      clawview: () => {
+        addOutput('Connecting to ClawView interface...');
+        const textLength = 'Connecting to ClawView interface...'.length;
+        const typingTime = textLength * 15 + 300;
+        setTimeout(() => navigate('/tools/clawview'), typingTime);
+      },
+      clawnetcore: () => {
+        addOutput('Connecting to ClawNet Core...');
+        const textLength = 'Connecting to ClawNet Core...'.length;
+        const typingTime = textLength * 15 + 300;
+        setTimeout(() => navigate('/tools/clawnetcore'), typingTime);
+      },
+    },
+    join: {
+      the_grid: () => {
+        addOutput('Accessing The Grid...');
+        const textLength = 'Accessing The Grid...'.length;
+        const typingTime = textLength * 15 + 300;
+        setTimeout(() => {
+          addOutput('Connected to The Grid.', 'output', 0);
+          setTimeout(() => navigate('/hub'), 500);
+        }, typingTime);
+      },
+    },
+    show: {
+      projects: () => {
+        addOutput('Fetching active projects...');
+        const textLength = 'Fetching active projects...'.length;
+        const typingTime = textLength * 15 + 300;
+        setTimeout(() => {
+          addOutput('> Project Alpha - Neural Network Defense', 'output', 0);
+          const delay1 = '> Project Alpha - Neural Network Defense'.length * 15 + 200;
+          setTimeout(() => {
+            addOutput('> Project Beta - Quantum Encryption', 'output', 0);
+            const delay2 = '> Project Beta - Quantum Encryption'.length * 15 + 200;
+            setTimeout(() => {
+              addOutput('> Project Gamma - AI Threat Detection', 'output', 0);
+            }, delay2);
+          }, delay1);
+        }, typingTime);
+      },
+      tools: () => {
+        addOutput('Available ClawNet Tools:');
+        const textLength = 'Available ClawNet Tools:'.length;
+        const typingTime = textLength * 15 + 300;
+        setTimeout(() => {
+          addOutput('> Portlock - Network Security Scanner', 'output', 0);
+          const delay1 = '> Portlock - Network Security Scanner'.length * 15 + 200;
+          setTimeout(() => {
+            addOutput('> ClawView - Threat Visualization', 'output', 0);
+            const delay2 = '> ClawView - Threat Visualization'.length * 15 + 200;
+            setTimeout(() => {
+              addOutput('> ClawNet Core - AI Defense System', 'output', 0);
+            }, delay2);
+          }, delay1);
+        }, typingTime);
+      },
+    },
+    clawstats: () => {
+      addOutput('=== ClawNet System Statistics ===');
+      const initialDelay = '=== ClawNet System Statistics ==='.length * 15 + 200;
+      setTimeout(() => {
+        addOutput('Active Users: 240+', 'output', 0);
+        const delay1 = 'Active Users: 240+'.length * 15 + 150;
+        setTimeout(() => {
+          addOutput('Threats Detected: 1,200+', 'output', 0);
+          const delay2 = 'Threats Detected: 1,200+'.length * 15 + 150;
+          setTimeout(() => {
+            addOutput('System Uptime: 99.5%', 'output', 0);
+            const delay3 = 'System Uptime: 99.5%'.length * 15 + 150;
+            setTimeout(() => {
+              addOutput('Detection Rate: 3.2x faster', 'output', 0);
+            }, delay3);
+          }, delay2);
+        }, delay1);
+      }, initialDelay);
+    },
+    scan: () => {
+      addOutput('Initiating network scan...');
+      const delays = [
+        { text: 'Scanning ports 1-1024...', time: 400 },
+        { text: 'Scanning ports 1025-2048...', time: 350 },
+        { text: 'Analyzing network traffic...', time: 300 },
+        { text: 'Scan complete. No threats detected.', time: 250 },
+      ];
+      let totalDelay = 500;
+      delays.forEach((item) => {
+        setTimeout(() => {
+          addOutput(item.text, 'output', 0);
+        }, totalDelay);
+        totalDelay += item.time;
+      });
+    },
+    ping: (args) => {
+      const host = args && args.length > 0 ? args.join(' ') : 'grid.clawnet.io';
+      addOutput(`Pinging ${host}...`);
+      setTimeout(() => {
+        addOutput(`PING ${host} (192.168.1.1): 56 data bytes`, 'output', 0);
+        const times = [15, 18, 16, 17];
+        times.forEach((time, i) => {
+          setTimeout(() => {
+            addOutput(`64 bytes from ${host}: icmp_seq=${i + 1} ttl=64 time=${time}ms`, 'output', 0);
+          }, 500 + i * 300);
+        });
+        setTimeout(() => {
+          addOutput(`--- ${host} ping statistics ---`, 'output', 0);
+          setTimeout(() => {
+            addOutput('4 packets transmitted, 4 received, 0% packet loss', 'output', 0);
+          }, 200);
+        }, 1700);
+      }, 400);
+    },
+    whoami: () => {
+      addOutput('Current user: clawnet@grid');
+      setTimeout(() => {
+        addOutput('User ID: guest-2024', 'output', 0);
+        setTimeout(() => {
+          addOutput('Permission level: standard', 'output', 0);
+        }, 200);
+      }, 300);
+    },
+    date: () => {
+      const now = new Date();
+      addOutput(now.toLocaleString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZoneName: 'short'
+      }));
+    },
+    ls: () => {
+      addOutput('Available directories:');
+      const dirs = ['tools/', 'projects/', 'docs/', 'community/'];
+      dirs.forEach((dir, i) => {
+        setTimeout(() => {
+          addOutput(`  ${dir}`, 'output', 0);
+        }, 300 + i * 150);
+      });
+    },
+    echo: (args) => {
+      if (args && args.length > 0) {
+        addOutput(args.join(' '));
+      } else {
+        addOutput('Usage: echo [text]', 'error');
+      }
+    },
+    version: () => {
+      addOutput('ClawNet Terminal v2.0.1');
+      setTimeout(() => {
+        addOutput('Build: 2024.12.15', 'output', 0);
+        setTimeout(() => {
+          addOutput('Platform: Web', 'output', 0);
+        }, 200);
+      }, 300);
+    },
+    sudo: (args) => {
+      if (args && args.length > 0 && args[0] === 'kill' && args[1] === 'all') {
+        addOutput('⚠ WARNING: Executing system kill command...', 'error');
+        setTimeout(() => {
+          addOutput('Initiating system glitch sequence...', 'error', 0);
+          setTimeout(() => {
+            triggerGlitchEffect();
+            setTimeout(() => {
+              addOutput('System restored. You weren\'t supposed to see that.', 'output', 0);
+            }, 2500);
+          }, 800);
+        }, 500);
+      } else {
+        addOutput('Usage: sudo kill all', 'error');
+      }
+    },
+    help: () => {
+      addOutput('Available Commands:');
+      let accumulatedDelay = 'Available Commands:'.length * 15 + 200;
+      const helpLines = [
+        '  connect [portlock|clawview|clawnetcore]',
+        '  join the_grid',
+        '  show [projects|tools]',
+        '  clawstats',
+        '  scan',
+        '  ping [host]',
+        '  whoami',
+        '  date',
+        '  ls',
+        '  echo [text]',
+        '  version',
+        '  sudo kill all',
+        '  clear',
+        '  help'
+      ];
+      helpLines.forEach((line) => {
+        setTimeout(() => {
+          addOutput(line, 'output', 0);
+        }, accumulatedDelay);
+        accumulatedDelay += line.length * 15 + 150;
+      });
+    },
+    clear: () => {
+      setHistory([]);
+    },
+  };
+
+  const addOutput = (text, type = 'output', delay = 0) => {
+    setTimeout(() => {
+      const timestamp = Date.now();
+      const newItem = { text, type, timestamp, displayedText: '', isTyping: true };
+      setHistory(prev => [...prev, newItem]);
+      
+      // Typewriter effect
+      let index = 0;
+      const typeInterval = setInterval(() => {
+        setHistory(prev => {
+          const updated = [...prev];
+          const itemIndex = updated.findIndex(item => item.timestamp === timestamp);
+          if (itemIndex !== -1) {
+            if (index < text.length) {
+              updated[itemIndex] = {
+                ...updated[itemIndex],
+                displayedText: text.slice(0, index + 1),
+                isTyping: true,
+              };
+              index++;
+            } else {
+              updated[itemIndex] = {
+                ...updated[itemIndex],
+                displayedText: text,
+                isTyping: false,
+              };
+              clearInterval(typeInterval);
+              typingIntervalsRef.current = typingIntervalsRef.current.filter(id => id !== typeInterval);
+            }
+          }
+          return updated;
+        });
+      }, 15); // Typing speed
+      typingIntervalsRef.current.push(typeInterval);
+    }, delay);
+  };
+  
+  useEffect(() => {
+    return () => {
+      typingIntervalsRef.current.forEach(interval => clearInterval(interval));
+      typingIntervalsRef.current = [];
+    };
+  }, []);
+
+  const executeCommand = (cmd) => {
+    const parts = cmd.trim().split(' ');
+    const mainCmd = parts[0].toLowerCase();
+    const args = parts.slice(1);
+
+    if (commands[mainCmd]) {
+      if (typeof commands[mainCmd] === 'function') {
+        // Commands that take arguments
+        if (mainCmd === 'ping' || mainCmd === 'echo' || mainCmd === 'sudo') {
+          commands[mainCmd](args);
+        } else {
+          commands[mainCmd]();
+        }
+      } else if (parts.length > 1) {
+        const subCmd = parts.slice(1).join(' ').toLowerCase();
+        const subCommand = commands[mainCmd][subCmd];
+        if (subCommand) {
+          subCommand();
+        } else {
+          addOutput(`Command not found: ${cmd}`, 'error');
+        }
+      } else {
+        addOutput(`Usage: ${mainCmd} [option]`, 'error');
+      }
+    } else {
+      addOutput(`Command not found: ${cmd}. Type 'help' for available commands.`, 'error');
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    addOutput(`> ${input}`, 'command');
+    setCommandHistory(prev => [...prev, input]);
+    setHistoryIndex(-1);
+    executeCommand(input);
+    setInput('');
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (commandHistory.length > 0) {
+        const newIndex = historyIndex === -1 
+          ? commandHistory.length - 1 
+          : Math.max(0, historyIndex - 1);
+        setHistoryIndex(newIndex);
+        setInput(commandHistory[newIndex]);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIndex >= 0) {
+        const newIndex = historyIndex < commandHistory.length - 1 
+          ? historyIndex + 1 
+          : -1;
+        setHistoryIndex(newIndex);
+        setInput(newIndex === -1 ? '' : commandHistory[newIndex]);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      addOutput('ClawNet Command Console v2.0 initialized.');
+      addOutput('Type "help" for available commands.');
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      {isGlitching && (
+        <>
+          <div className="fixed inset-0 z-[10000] pointer-events-none">
+            <motion.div
+              animate={{
+                opacity: [0, 1, 0],
+                scale: [1, 1.2, 1],
+                rotate: [0, 5, -5, 0],
+              }}
+              transition={{ duration: 0.3, repeat: 5 }}
+              className="absolute inset-0 bg-red-500/20"
+            />
+            <div className="absolute inset-0 font-mono text-xs text-red-400 overflow-hidden">
+              {[...Array(100)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ y: -100, x: Math.random() * window.innerWidth }}
+                  animate={{ y: window.innerHeight + 100 }}
+                  transition={{ duration: 2, repeat: Infinity, delay: i * 0.05 }}
+                >
+                  {Math.random().toString(2).substring(2, 18)}
+                </motion.div>
+              ))}
+            </div>
+            {/* Secret message */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: [0, 1, 1, 0], scale: [0.8, 1, 1, 0.8] }}
+              transition={{ duration: 2, delay: 0.5 }}
+              className="absolute inset-0 flex items-center justify-center pointer-events-none"
+            >
+              <div className="cyber-card p-6 border-2 border-red-500/50">
+                <p className="font-orbitron text-xl text-red-400 text-center">
+                  You weren't supposed to see that.
+                </p>
+              </div>
+            </motion.div>
+          </div>
+          <motion.div
+            className="fixed inset-0 z-[10001] pointer-events-none interface-melt"
+            style={{
+              background: 'linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.9))',
+            }}
+          />
+        </>
+      )}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: isGlitching ? [1, 0.5, 1] : 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-cyber-black/80 backdrop-blur-sm ${isGlitching ? 'glitch-effect' : ''}`}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative w-full max-w-3xl bg-cyber-dark/98 backdrop-blur-md rounded-lg overflow-hidden"
+        style={{ 
+          borderRadius: '12px',
+          border: '1px solid rgba(0, 224, 255, 0.2)',
+          boxShadow: `
+            0 0 0 1px rgba(0, 224, 255, 0.1),
+            0 8px 32px rgba(0, 0, 0, 0.6),
+            inset 0 1px 0 rgba(0, 224, 255, 0.05)
+          `
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Subtle grid background */}
+        <div 
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(0, 224, 255, 0.3) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(0, 224, 255, 0.3) 1px, transparent 1px)
+            `,
+            backgroundSize: '24px 24px',
+          }}
+        />
+
+        {/* Header */}
+        <div className="relative flex items-center justify-between bg-gradient-to-r from-cyber-black/90 to-cyber-dark/80 px-6 py-3.5 border-b border-cyber-blue/30">
+          <div className="flex items-center gap-3">
+            <div className="p-1.5 rounded bg-cyber-blue/10">
+              <Terminal className="text-cyber-blue" size={18} />
+            </div>
+            <div>
+              <span className="font-orbitron text-base font-semibold text-cyber-blue">ClawNet Terminal</span>
+              <div className="text-xs text-gray-400 font-mono">v2.0.1</div>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white hover:bg-red-500/10 transition-all p-1.5 rounded"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Terminal Content */}
+        <div className="relative h-[450px] overflow-hidden bg-cyber-black/20">
+          <div className="h-full overflow-y-auto p-6 font-mono text-sm space-y-2">
+            <AnimatePresence mode="popLayout">
+              {history.map((item, index) => (
+                <motion.div
+                  key={`${item.timestamp}-${index}`}
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className={`
+                    ${item.type === 'error' 
+                      ? 'text-red-400' 
+                      : item.type === 'command' 
+                      ? 'text-cyber-cyan' 
+                      : 'text-white'
+                    }
+                    break-words leading-relaxed
+                  `}
+                >
+                  {item.type === 'command' && (
+                    <span className="text-cyber-blue font-bold mr-2">$</span>
+                  )}
+                  {item.type === 'error' && (
+                    <span className="text-red-400 font-bold mr-2">✗</span>
+                  )}
+                  <span className="whitespace-pre-wrap break-words">{item.displayedText || item.text}</span>
+                  {item.isTyping && (
+                    <motion.span
+                      animate={{ opacity: [1, 0, 1] }}
+                      transition={{ duration: 0.6, repeat: Infinity }}
+                      className="inline-block w-[2px] h-4 bg-current ml-1 align-middle"
+                      style={{ marginLeft: '2px' }}
+                    />
+                  )}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Input Section */}
+        <form onSubmit={handleSubmit} className="relative border-t border-cyber-blue/20 bg-cyber-black/50 p-4">
+          <div className="flex items-center gap-2">
+            <span className="text-cyber-blue font-mono text-sm font-medium">
+              clawnet@grid&gt;
+            </span>
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="flex-1 bg-transparent text-white outline-none font-mono text-sm placeholder-gray-600"
+              placeholder="Enter command..."
+              autoComplete="off"
+              autoFocus
+            />
+            <motion.span
+              animate={{ opacity: [1, 0, 1] }}
+              transition={{ duration: 1, repeat: Infinity }}
+              className="w-[2px] h-4 bg-cyber-blue"
+            />
+          </div>
+        </form>
+      </motion.div>
+      </motion.div>
+    </>
+  );
+};
+
+export default ClawNetTerminal;
+

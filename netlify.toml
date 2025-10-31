@@ -1,0 +1,19 @@
+[build]
+  command = "npm install && npm run build"
+  publish = "dist"
+  base = "/"
+
+[build.environment]
+  NODE_VERSION = "18"
+  CI = "true"
+
+# Redirect all routes to index.html for SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[dev]
+  command = "vite"
+  port = 3000
+  publish = "dist"
