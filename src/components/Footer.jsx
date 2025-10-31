@@ -67,7 +67,7 @@ const Footer = () => {
               Contact Us
             </h3>
             <div className="space-y-3 font-exo text-sm">
-                <p className="text-gray-400">Email: <a href="mailto:intel@clawnet.dev" className="text-cyber-cyan hover:underline">intel@clawnet.dev</a></p>
+                <p className="text-gray-400">Email: <a href="mailto:contact@projectclawnet.online" className="text-cyber-cyan hover:underline">contact@projectclawnet.online</a></p>
                 <p className="text-gray-400">Status: <span className="text-green-400">All Systems Operational</span></p>
             </div>
           </div>

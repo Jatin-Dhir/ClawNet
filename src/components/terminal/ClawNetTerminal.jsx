@@ -16,10 +16,33 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
   const triggerGlitchEffect = () => {
     setIsGlitching(true);
     document.body.classList.add('glitch-effect');
+    
+    // Add audio feedback if available (optional, doesn't break if not available)
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(100, audioContext.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
+      oscillator.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.3);
+      
+      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (e) {
+      // Audio not available or blocked, continue without it
+    }
+    
     setTimeout(() => {
       setIsGlitching(false);
       document.body.classList.remove('glitch-effect');
-    }, 2500);
+    }, 3000);
   };
 
   const commands = {
@@ -196,13 +219,55 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
       if (args && args.length > 0 && args[0] === 'kill' && args[1] === 'all') {
         addOutput('⚠ WARNING: Executing system kill command...', 'error');
         setTimeout(() => {
-          addOutput('Initiating system glitch sequence...', 'error', 0);
+          addOutput('ERROR: Unauthorized access detected', 'error', 0);
           setTimeout(() => {
-            triggerGlitchEffect();
+            addOutput('ERROR: Critical system failure', 'error', 0);
             setTimeout(() => {
-              addOutput('System restored. You weren\'t supposed to see that.', 'output', 0);
-            }, 2500);
-          }, 800);
+              addOutput('ERROR: Initiating emergency shutdown...', 'error', 0);
+              setTimeout(() => {
+                addOutput('', 'output', 0);
+                setTimeout(() => {
+                  addOutput('███ SYSTEM SHUTDOWN SEQUENCE INITIATED ███', 'error', 0);
+                  setTimeout(() => {
+                    addOutput('Terminating all processes...', 'error', 0);
+                    setTimeout(() => {
+                      addOutput('Unmounting filesystems...', 'error', 0);
+                      setTimeout(() => {
+                        addOutput('Stopping services...', 'error', 0);
+                        setTimeout(() => {
+                          addOutput('System halted.', 'error', 0);
+                          setTimeout(() => {
+                            triggerGlitchEffect();
+                            setTimeout(() => {
+                              addOutput('', 'output', 0);
+                              setTimeout(() => {
+                                addOutput('███ REBOOT SEQUENCE INITIATED ███', 'output', 0);
+                                setTimeout(() => {
+                                  addOutput('Initializing hardware...', 'output', 0);
+                                  setTimeout(() => {
+                                    addOutput('Loading system modules...', 'output', 0);
+                                    setTimeout(() => {
+                                      addOutput('Starting services...', 'output', 0);
+                                      setTimeout(() => {
+                                        addOutput('System restored.', 'output', 0);
+                                        setTimeout(() => {
+                                          addOutput('You weren\'t supposed to do that.', 'error', 0);
+                                        }, 300);
+                                      }, 400);
+                                    }, 400);
+                                  }, 400);
+                                }, 500);
+                              }, 500);
+                            }, 2000);
+                          }, 500);
+                        }, 400);
+                      }, 400);
+                    }, 400);
+                  }, 500);
+                }, 500);
+              }, 500);
+            }, 400);
+          }, 400);
         }, 500);
       } else {
         addOutput('Usage: sudo kill all', 'error');
@@ -364,40 +429,114 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
     <>
       {isGlitching && (
         <>
-          <div className="fixed inset-0 z-[10000] pointer-events-none">
+          <div className="fixed inset-0 z-[10000] pointer-events-none overflow-hidden">
+            {/* Pulsing red overlay with smoother transitions */}
             <motion.div
               animate={{
-                opacity: [0, 1, 0],
-                scale: [1, 1.2, 1],
-                rotate: [0, 5, -5, 0],
+                opacity: [0, 0.4, 0.3, 0.5, 0.2, 0],
+                scale: [1, 1.05, 1, 1.08, 1, 1],
+                rotate: [0, 1, -1, 1.5, -1.5, 0],
               }}
-              transition={{ duration: 0.3, repeat: 5 }}
-              className="absolute inset-0 bg-red-500/20"
+              transition={{ duration: 0.5, repeat: 6, ease: "easeInOut" }}
+              className="absolute inset-0 bg-gradient-to-br from-red-600/30 via-purple-600/20 to-red-600/30"
             />
-            <div className="absolute inset-0 font-mono text-xs text-red-400 overflow-hidden">
-              {[...Array(100)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ y: -100, x: Math.random() * window.innerWidth }}
-                  animate={{ y: window.innerHeight + 100 }}
-                  transition={{ duration: 2, repeat: Infinity, delay: i * 0.05 }}
-                >
-                  {Math.random().toString(2).substring(2, 18)}
-                </motion.div>
-              ))}
-            </div>
-            {/* Secret message */}
+            
+            {/* Horizontal scan lines */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: [0, 1, 1, 0], scale: [0.8, 1, 1, 0.8] }}
-              transition={{ duration: 2, delay: 0.5 }}
+              className="absolute inset-0"
+              animate={{
+                backgroundPosition: ['0 0', '0 100%'],
+              }}
+              transition={{
+                duration: 0.3,
+                repeat: Infinity,
+                ease: 'linear',
+              }}
+              style={{
+                background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(239, 68, 68, 0.1) 2px, rgba(239, 68, 68, 0.1) 4px)',
+              }}
+            />
+            
+            {/* Enhanced binary rain effect */}
+            <div className="absolute inset-0 font-mono text-xs text-red-400/80 overflow-hidden">
+              {[...Array(150)].map((_, i) => {
+                const randomX = Math.random() * window.innerWidth;
+                const randomDelay = Math.random() * 2;
+                const randomSpeed = 1.5 + Math.random() * 1.5;
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ y: -100, x: randomX, opacity: 0 }}
+                    animate={{ 
+                      y: window.innerHeight + 100,
+                      opacity: [0, 0.8, 0.8, 0]
+                    }}
+                    transition={{ 
+                      duration: randomSpeed, 
+                      repeat: Infinity, 
+                      delay: randomDelay,
+                      ease: 'linear'
+                    }}
+                    style={{
+                      textShadow: '0 0 8px rgba(239, 68, 68, 0.8)',
+                    }}
+                  >
+                    {Math.random().toString(2).substring(2, 20)}
+                  </motion.div>
+                );
+              })}
+            </div>
+            
+            {/* Glitch distortion overlay */}
+            <motion.div
+              className="absolute inset-0 mix-blend-screen"
+              animate={{
+                opacity: [0, 0.3, 0, 0.4, 0],
+                x: [0, -3, 3, -2, 2, 0],
+              }}
+              transition={{ duration: 0.4, repeat: 7, ease: "easeInOut" }}
+              style={{
+                background: 'radial-gradient(circle at 50% 50%, transparent 0%, rgba(239, 68, 68, 0.15) 100%)',
+              }}
+            />
+            
+            {/* Secret message with better animation */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.5, y: 50 }}
+              animate={{ 
+                opacity: [0, 1, 1, 1, 0],
+                scale: [0.5, 1.05, 1, 1, 0.8],
+                y: [50, 0, -10, 0, 30],
+                rotate: [0, 2, -2, 0]
+              }}
+              transition={{ duration: 3, delay: 0.8, ease: [0.4, 0, 0.2, 1] }}
               className="absolute inset-0 flex items-center justify-center pointer-events-none"
             >
-              <div className="cyber-card p-6 border-2 border-red-500/50">
-                <p className="font-orbitron text-xl text-red-400 text-center">
-                  You weren't supposed to see that.
-                </p>
-              </div>
+              <motion.div 
+                className="cyber-card p-8 border-2 border-red-500/60 bg-black/80 backdrop-blur-sm"
+                animate={{
+                  boxShadow: [
+                    '0 0 20px rgba(239, 68, 68, 0.3)',
+                    '0 0 40px rgba(239, 68, 68, 0.6)',
+                    '0 0 20px rgba(239, 68, 68, 0.3)',
+                  ],
+                }}
+                transition={{ duration: 1, repeat: Infinity }}
+              >
+                <motion.p 
+                  className="font-orbitron text-2xl text-red-400 text-center"
+                  animate={{
+                    textShadow: [
+                      '0 0 10px rgba(239, 68, 68, 0.8)',
+                      '0 0 20px rgba(239, 68, 68, 1)',
+                      '0 0 10px rgba(239, 68, 68, 0.8)',
+                    ],
+                  }}
+                  transition={{ duration: 0.8, repeat: Infinity }}
+                >
+                  You weren't supposed to do that.
+                </motion.p>
+              </motion.div>
             </motion.div>
           </div>
           <motion.div

@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { HardDrive, AppWindow, Apple, Download, Clock } from 'lucide-react';
+import { downloadFile } from '../../utils/fileStorage';
+import toast from 'react-hot-toast';
 
 const PlatformIcon = ({ platform }) => {
   switch (platform) {
@@ -13,6 +15,36 @@ const PlatformIcon = ({ platform }) => {
 
 const DownloadSection = ({ compatibility, toolName }) => {
   const platforms = ['linux', 'windows', 'macos'];
+  const [downloading, setDownloading] = useState({});
+
+  const handleDownload = async (platform, toolName) => {
+    const key = `${platform}-${toolName}`;
+    setDownloading({ ...downloading, [key]: true });
+
+    try {
+      // Try to download from Supabase Storage
+      const success = await downloadFile(toolName, platform, compatibility[platform].version);
+      
+      if (success) {
+        // File exists in Supabase, download successful
+        toast.success('Download started!');
+        setDownloading({ ...downloading, [key]: false });
+        return;
+      } else {
+        // File doesn't exist
+        toast.error('Unable to download. File not found. Please contact us at contact@projectclawnet.online', {
+          duration: 5000,
+        });
+      }
+    } catch (error) {
+      console.error('Error downloading from storage:', error);
+      toast.error('Unable to download. Please contact us at contact@projectclawnet.online', {
+        duration: 5000,
+      });
+    }
+    
+    setDownloading({ ...downloading, [key]: false });
+  };
 
   return (
     <div className="mt-24 pt-12 border-t border-cyber-blue/20">
@@ -28,12 +60,23 @@ const DownloadSection = ({ compatibility, toolName }) => {
                 <>
                   <p className="font-exo text-sm text-gray-400 mb-4">Version {info.version}</p>
                   <motion.button
-                    whileHover={{ scale: 1.05, boxShadow: '0 0 20px rgba(0, 224, 255, 0.3)' }}
-                    whileTap={{ scale: 0.95 }}
-                    className="w-full mt-auto flex items-center justify-center gap-2 px-6 py-2 bg-cyber-blue/80 text-cyber-darker font-orbitron font-bold rounded-md transition-all duration-300 hover:bg-cyber-blue"
+                    onClick={() => handleDownload(platform, toolName)}
+                    disabled={downloading[`${platform}-${toolName}`]}
+                    whileHover={{ scale: downloading[`${platform}-${toolName}`] ? 1 : 1.05, boxShadow: '0 0 20px rgba(0, 224, 255, 0.3)' }}
+                    whileTap={{ scale: downloading[`${platform}-${toolName}`] ? 1 : 0.95 }}
+                    className="w-full mt-auto flex items-center justify-center gap-2 px-6 py-2 bg-cyber-blue/80 text-cyber-darker font-orbitron font-bold rounded-md transition-all duration-300 hover:bg-cyber-blue disabled:opacity-70 disabled:cursor-wait"
                   >
-                    <Download size={18} />
-                    Download
+                    {downloading[`${platform}-${toolName}`] ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-cyber-darker border-t-transparent rounded-full animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download size={18} />
+                        Download
+                      </>
+                    )}
                   </motion.button>
                 </>
               ) : info.comingSoon ? (

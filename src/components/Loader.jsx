@@ -187,38 +187,6 @@ const Loader = () => {
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
     >
-      {/* Animated grid background */}
-      <div 
-        className="absolute inset-0 opacity-5"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(0, 224, 255, 0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0, 224, 255, 0.1) 1px, transparent 1px)
-          `,
-          backgroundSize: '50px 50px',
-        }}
-      />
-      <motion.div
-        className="absolute inset-0 opacity-5"
-        animate={{
-          backgroundPosition: ['0 0', '50px 50px'],
-        }}
-        transition={{
-          duration: 20,
-          repeat: Infinity,
-          ease: 'linear',
-        }}
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(0, 224, 255, 0.05) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0, 224, 255, 0.05) 1px, transparent 1px)
-          `,
-          backgroundSize: '50px 50px',
-        }}
-      />
-      
-      {/* Scanline effect */}
-      <Scanlines />
       
       {/* Ambient glow effects */}
       <motion.div

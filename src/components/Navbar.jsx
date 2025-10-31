@@ -23,6 +23,7 @@ const Navbar = ({ onSignInClick }) => {
   }, []);
   
   const handleSignOut = async () => {
+    setMobileMenuOpen(false);
     setIsShuttingDown(true);
     setTimeout(async () => {
       await signOut();
@@ -125,10 +126,15 @@ const Navbar = ({ onSignInClick }) => {
               )}
 
               <motion.button
-                className="md:hidden relative w-10 h-10 flex items-center justify-center text-gray-300 hover:text-cyber-blue transition-colors z-50 touch-manipulation"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden relative w-10 h-10 flex items-center justify-center text-gray-300 hover:text-cyber-blue transition-colors z-[10000] touch-manipulation"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setMobileMenuOpen(!mobileMenuOpen);
+                }}
                 aria-label="Toggle menu"
-                whileTap={{ scale: 0.9 }}
+                whileTap={{ scale: 0.95 }}
+                style={{ position: 'relative' }}
               >
                 <AnimatePresence mode="wait">
                   {mobileMenuOpen ? (
@@ -139,7 +145,7 @@ const Navbar = ({ onSignInClick }) => {
                       exit={{ rotate: 90, opacity: 0 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <X size={24} strokeWidth={2.5} />
+                      <X size={24} strokeWidth={2} />
                     </motion.div>
                   ) : (
                     <motion.div
@@ -149,7 +155,7 @@ const Navbar = ({ onSignInClick }) => {
                       exit={{ rotate: -90, opacity: 0 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <Menu size={24} strokeWidth={2.5} />
+                      <Menu size={24} strokeWidth={2} />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -166,34 +172,48 @@ const Navbar = ({ onSignInClick }) => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-cyber-black/95 backdrop-blur-xl z-40 md:hidden"
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 bg-cyber-black/90 backdrop-blur-md z-[9998] md:hidden"
               onClick={() => setMobileMenuOpen(false)}
+              style={{ position: 'fixed' }}
             />
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-cyber-dark/98 backdrop-blur-xl border-l border-cyber-blue/20 z-50 md:hidden flex flex-col shadow-2xl"
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed top-0 right-0 bottom-0 w-72 max-w-[85vw] bg-cyber-dark border-l border-cyber-blue/30 z-[9999] md:hidden flex flex-col shadow-2xl relative overflow-hidden"
+              style={{ 
+                position: 'fixed',
+                backgroundColor: '#0f1117',
+                backdropFilter: 'blur(20px)'
+              }}
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between p-6 border-b border-cyber-blue/20">
-                <span className="font-orbitron text-lg text-cyber-blue">Menu</span>
-                <button
+              {/* Header */}
+              <div className="relative flex items-center justify-between p-5 border-b border-cyber-blue/10">
+                <div className="flex items-center gap-2.5">
+                  <Shield className="w-5 h-5 text-cyber-blue" strokeWidth={1.5} />
+                  <span className="font-orbitron text-lg font-bold text-white tracking-wider">CLAWNET</span>
+                </div>
+                <motion.button
                   onClick={() => setMobileMenuOpen(false)}
-                  className="p-2 text-gray-400 hover:text-white hover:bg-cyber-gray/30 rounded transition-colors touch-manipulation"
+                  whileTap={{ scale: 0.9 }}
+                  className="p-2 text-gray-400 hover:text-white transition-colors touch-manipulation"
                 >
-                  <X size={20} />
-                </button>
+                  <X size={20} strokeWidth={2} />
+                </motion.button>
               </div>
+              
+              {/* Menu Content */}
               <motion.ul 
-                className="flex flex-col px-6 py-8 space-y-6 flex-grow overflow-y-auto"
+                className="relative flex flex-col px-5 py-5 space-y-1 flex-grow overflow-y-auto scrollbar-hide"
                 variants={{
                   hidden: { opacity: 0 },
                   visible: {
                     opacity: 1,
                     transition: {
-                      staggerChildren: 0.05,
+                      staggerChildren: 0.04,
                     },
                   },
                 }}
@@ -203,56 +223,83 @@ const Navbar = ({ onSignInClick }) => {
               >
                 {session ? (
                   <>
-                    <motion.li variants={{ hidden: { opacity: 0, x: 20 }, visible: { opacity: 1, x: 0 } }} className="pb-4 border-b border-cyber-blue/10">
-                      <p className="font-exo text-sm text-gray-400 mb-1">Welcome back</p>
-                      <p className="font-orbitron text-lg text-cyber-cyan">{profile?.username || 'User'}</p>
+                    {/* User Welcome Section */}
+                    <motion.li 
+                      variants={{ hidden: { opacity: 0, y: -10 }, visible: { opacity: 1, y: 0 } }} 
+                      className="mb-5 pb-5 border-b border-cyber-blue/10"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-cyber-gray/30 border border-cyber-blue/20 flex items-center justify-center">
+                          <User size={16} className="text-cyber-blue" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-exo text-xs text-gray-500 mb-0.5">Welcome back</p>
+                          <p className="font-exo text-sm text-white truncate font-medium">{profile?.username || 'User'}</p>
+                        </div>
+                      </div>
                     </motion.li>
-                    <motion.li variants={{ hidden: { opacity: 0, x: 20 }, visible: { opacity: 1, x: 0 } }}>
+                    
+                    {/* Hub Link */}
+                    <motion.li variants={{ hidden: { opacity: 0, y: -10 }, visible: { opacity: 1, y: 0 } }}>
                       <Link 
                         to="/hub" 
                         onClick={() => setMobileMenuOpen(false)} 
-                        className="flex items-center gap-3 px-4 py-3 rounded-lg bg-cyber-gray/30 hover:bg-cyber-blue/10 border border-cyber-blue/20 hover:border-cyber-blue/40 transition-all touch-manipulation"
+                        className="flex items-center gap-3 px-4 py-3 rounded-md text-gray-300 hover:text-white hover:bg-cyber-gray/20 transition-colors touch-manipulation border-l-2 border-transparent hover:border-cyber-blue"
                       >
-                        <LayoutDashboard size={20} className="text-cyber-blue" />
-                        <span className="font-orbitron text-base text-white">Community Hub</span>
+                        <LayoutDashboard size={18} className="text-cyber-blue/70" />
+                        <span className="font-exo text-sm font-medium">Community Hub</span>
                       </Link>
                     </motion.li>
-                    <motion.li variants={{ hidden: { opacity: 0, x: 20 }, visible: { opacity: 1, x: 0 } }} className="mt-auto pt-6">
+                    
+                    {/* Spacer */}
+                    <div className="flex-grow" />
+                    
+                    {/* Sign Out Button */}
+                    <motion.li 
+                      variants={{ hidden: { opacity: 0, y: -10 }, visible: { opacity: 1, y: 0 } }} 
+                      className="pt-4 border-t border-cyber-blue/10"
+                    >
                       <button 
                         onClick={handleSignOut} 
-                        className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 transition-all text-red-400 font-orbitron text-sm touch-manipulation"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md bg-transparent hover:bg-red-500/10 border border-red-500/20 hover:border-red-500/30 transition-all text-red-400/80 hover:text-red-400 font-exo text-sm touch-manipulation"
                       >
-                        <LogOut size={18} />
-                        Sign Out
+                        <LogOut size={16} />
+                        <span>Sign Out</span>
                       </button>
                     </motion.li>
                   </>
                 ) : (
                   <>
+                    {/* Navigation Items */}
                     {navItems.map((item) => (
                       <motion.li 
                         key={item.name} 
-                        variants={{ hidden: { opacity: 0, x: 20 }, visible: { opacity: 1, x: 0 } }}
+                        variants={{ hidden: { opacity: 0, y: -10 }, visible: { opacity: 1, y: 0 } }}
                       >
                         <a 
                           href={item.href} 
-                          onClick={(e) => { scrollToSection(e, item.href); }} 
-                          className="block px-4 py-3 rounded-lg text-gray-300 hover:text-cyber-blue hover:bg-cyber-gray/30 font-orbitron text-base transition-all touch-manipulation"
+                          onClick={(e) => { scrollToSection(e, item.href); setMobileMenuOpen(false); }} 
+                          className="flex items-center px-4 py-3 rounded-md text-gray-400 hover:text-white hover:bg-cyber-gray/10 transition-all touch-manipulation border-l-2 border-transparent hover:border-cyber-blue/50"
                         >
-                          {item.name}
+                          <span className="font-exo text-sm font-medium">{item.name}</span>
                         </a>
                       </motion.li>
                     ))}
+                    
+                    {/* Spacer */}
+                    <div className="flex-grow" />
+                    
+                    {/* Sign In Button */}
                     <motion.li 
-                      variants={{ hidden: { opacity: 0, x: 20 }, visible: { opacity: 1, x: 0 } }} 
-                      className="mt-auto pt-6"
+                      variants={{ hidden: { opacity: 0, y: -10 }, visible: { opacity: 1, y: 0 } }} 
+                      className="pt-4 border-t border-cyber-blue/10"
                     >
                       <button 
                         onClick={() => { onSignInClick(); setMobileMenuOpen(false); }} 
-                        className="w-full flex items-center justify-center gap-2 px-6 py-3 border-2 border-cyber-blue rounded-lg text-cyber-blue font-orbitron font-bold text-base hover:bg-cyber-blue/10 transition-all touch-manipulation"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-cyber-blue/10 hover:bg-cyber-blue/20 border border-cyber-blue/30 hover:border-cyber-blue/50 rounded-md text-cyber-blue hover:text-white font-exo text-sm font-medium transition-all touch-manipulation"
                       >
-                        <User size={18} />
-                        Sign In
+                        <User size={16} />
+                        <span>Sign In</span>
                       </button>
                     </motion.li>
                   </>

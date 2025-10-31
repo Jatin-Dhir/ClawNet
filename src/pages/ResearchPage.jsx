@@ -108,7 +108,50 @@ const ResearchPage = () => {
                   <span className="text-sm font-exo">Share</span>
                 </motion.button>
               </div>
-              <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} className="flex items-center gap-2 px-4 py-2 bg-cyber-blue/80 text-cyber-darker font-orbitron font-bold rounded-md text-sm">
+              <motion.button 
+                onClick={() => {
+                  // Generate PDF-like content
+                  let pdfContent = `\n\n`;
+                  pdfContent += `═══════════════════════════════════════════════════════════\n`;
+                  pdfContent += `${post.title.toUpperCase()}\n`;
+                  pdfContent += `═══════════════════════════════════════════════════════════\n\n`;
+                  pdfContent += `Category: ${post.category}\n`;
+                  pdfContent += `Author: ${post.author}\n`;
+                  pdfContent += `Date: ${post.date}\n\n`;
+                  pdfContent += `───────────────────────────────────────────────────────────────\n`;
+                  pdfContent += `ABSTRACT\n`;
+                  pdfContent += `───────────────────────────────────────────────────────────────\n\n`;
+                  pdfContent += `${post.abstract}\n\n\n`;
+                  pdfContent += `───────────────────────────────────────────────────────────────\n`;
+                  pdfContent += `CONTENT\n`;
+                  pdfContent += `───────────────────────────────────────────────────────────────\n\n`;
+                  post.content.forEach(item => {
+                    if (item.type === 'h3') {
+                      pdfContent += `\n${item.text}\n`;
+                      pdfContent += `${'-'.repeat(60)}\n\n`;
+                    } else if (item.type === 'p') {
+                      pdfContent += `${item.text}\n\n`;
+                    }
+                  });
+                  pdfContent += `\n\n═══════════════════════════════════════════════════════════\n`;
+                  pdfContent += `© ClawNet Security - Research Intelligence Division\n`;
+                  pdfContent += `This is a sample document. Actual PDF will be available soon.\n`;
+                  pdfContent += `═══════════════════════════════════════════════════════════\n`;
+
+                  const blob = new Blob([pdfContent], { type: 'text/plain' });
+                  const url = window.URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `${post.title.replace(/\s+/g, '-').toLowerCase()}-research.txt`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  window.URL.revokeObjectURL(url);
+                }}
+                whileHover={{scale: 1.05}} 
+                whileTap={{scale: 0.95}} 
+                className="flex items-center gap-2 px-4 py-2 bg-cyber-blue/80 text-cyber-darker font-orbitron font-bold rounded-md text-sm hover:bg-cyber-blue transition-colors"
+              >
                 <Download size={16} />
                 Download PDF
               </motion.button>
