@@ -140,7 +140,8 @@ const ParticleBackground = () => {
   return (
     <canvas
       ref={canvasRef}
-      className="fixed top-0 left-0 pointer-events-none z-[-1]"
+      id="particle-canvas"
+      className="fixed top-0 left-0 pointer-events-none z-[-1] particle-background"
     />
   );
 };

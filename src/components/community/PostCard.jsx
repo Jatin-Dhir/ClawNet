@@ -61,20 +61,20 @@ const PostCard = ({ post, onEdit, onRefresh }) => {
   return (
     <motion.div
       whileHover={{ y: -5, boxShadow: '0 0 20px rgba(0, 224, 255, 0.1)' }}
-      className="cyber-card p-6 flex flex-col md:flex-row gap-6"
+      className="cyber-card p-4 md:p-6 flex flex-col md:flex-row gap-4 md:gap-6"
     >
-      <div className="flex-shrink-0 flex flex-col items-center gap-2 w-full md:w-20">
-        <button className="w-12 h-12 flex flex-col items-center justify-center rounded-lg bg-cyber-gray/50 hover:bg-cyber-blue/20 transition-colors">
-          <ArrowUp className="text-cyber-blue" />
+      <div className="flex-shrink-0 flex flex-row md:flex-col items-center justify-between md:justify-start gap-3 md:gap-2 w-full md:w-20">
+        <button className="w-10 h-10 md:w-12 md:h-12 flex flex-col items-center justify-center rounded-lg bg-cyber-gray/50 hover:bg-cyber-blue/20 transition-colors touch-manipulation">
+          <ArrowUp className="text-cyber-blue" size={18} />
           <span className="font-orbitron text-xs text-white">{post.upvotes || 0}</span>
         </button>
-        <div className="flex flex-col items-center">
-            <MessageSquare size={18} className="text-gray-500" />
+        <div className="flex flex-row md:flex-col items-center gap-2">
+            <MessageSquare size={16} className="text-gray-500 md:w-[18px] md:h-[18px]" />
             <span className="font-orbitron text-xs text-gray-400">{post.comment_count || 0}</span>
         </div>
       </div>
-      <div className="flex-grow">
-        <div className="flex flex-wrap items-center gap-4 mb-3">
+      <div className="flex-grow min-w-0">
+        <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-3">
           <div className={`border px-2 py-0.5 rounded-full text-xs font-orbitron ${categoryColors[post.category] || 'border-gray-500 text-gray-500'}`}>
             {categoryText[post.category] || post.category}
           </div>
@@ -87,24 +87,24 @@ const PostCard = ({ post, onEdit, onRefresh }) => {
             <div className="flex items-center gap-2 ml-auto">
               <button
                 onClick={handleEdit}
-                className="p-1.5 text-cyber-blue hover:text-cyber-cyan hover:bg-cyber-blue/10 rounded transition-colors"
+                className="p-2 md:p-1.5 text-cyber-blue hover:text-cyber-cyan hover:bg-cyber-blue/10 rounded transition-colors touch-manipulation"
                 title="Edit post"
               >
-                <Edit2 size={16} />
+                <Edit2 size={18} className="md:w-4 md:h-4" />
               </button>
               <button
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="p-1.5 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50"
+                className="p-2 md:p-1.5 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50 touch-manipulation"
                 title="Delete post"
               >
-                <Trash2 size={16} />
+                <Trash2 size={18} className="md:w-4 md:h-4" />
               </button>
             </div>
           )}
         </div>
-        <h3 className="font-orbitron text-2xl font-bold text-white mb-3">{post.title}</h3>
-        <p className="font-exo text-gray-300 mb-4 whitespace-pre-wrap">{post.content}</p>
+        <h3 className="font-orbitron text-xl md:text-2xl font-bold text-white mb-2 md:mb-3 break-words">{post.title}</h3>
+        <p className="font-exo text-sm md:text-base text-gray-300 mb-4 whitespace-pre-wrap break-words">{post.content}</p>
         
         {post.code_snippet && (
           <div className="mb-4">

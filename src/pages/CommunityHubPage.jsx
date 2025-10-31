@@ -86,31 +86,39 @@ const CommunityHubPage = () => {
             onClick={() => setIsPostModalOpen(true)}
             whileHover={{ scale: 1.05, boxShadow: '0 0 25px rgba(0, 224, 255, 0.5)' }}
             whileTap={{ scale: 0.95 }}
-            className="mt-4 md:mt-0 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker font-orbitron font-bold rounded-md transition-shadow duration-300"
+            className="mt-4 md:mt-0 w-full md:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker font-orbitron font-bold rounded-md transition-shadow duration-300 text-sm md:text-base"
           >
-            <Plus size={20} />
-            Post a Tool or Idea
+            <Plus size={18} className="md:w-5 md:h-5" />
+            <span className="hidden sm:inline">Post a Tool or Idea</span>
+            <span className="sm:hidden">New Post</span>
           </motion.button>
         </motion.div>
 
         <div className="mb-8">
-          <div className="bg-cyber-gray/20 backdrop-blur-sm border border-cyber-blue/10 rounded-lg p-2 inline-flex gap-2">
-            {tabs.map(tab => (
-              <motion.button
-                key={tab.name}
-                onClick={() => setFilter(tab.name)}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-md font-orbitron text-sm font-semibold whitespace-nowrap transition-all ${
-                  filter === tab.name
-                    ? 'bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker shadow-lg shadow-cyber-blue/30'
-                    : 'text-gray-400 hover:text-white hover:bg-cyber-gray/30'
-                }`}
-              >
-                <tab.icon size={18} />
-                {tab.name}
-              </motion.button>
-            ))}
+          <div className="bg-cyber-gray/20 backdrop-blur-sm border border-cyber-blue/10 rounded-lg p-2 overflow-x-auto scrollbar-hide">
+            <div className="flex gap-2 min-w-max md:inline-flex">
+              {tabs.map(tab => (
+                <motion.button
+                  key={tab.name}
+                  onClick={() => setFilter(tab.name)}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className={`flex items-center gap-2 px-4 md:px-5 py-2.5 rounded-md font-orbitron text-xs md:text-sm font-semibold whitespace-nowrap transition-all ${
+                    filter === tab.name
+                      ? 'bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker shadow-lg shadow-cyber-blue/30'
+                      : 'text-gray-400 hover:text-white hover:bg-cyber-gray/30'
+                  }`}
+                >
+                  <tab.icon size={16} className="md:w-[18px] md:h-[18px]" />
+                  <span className="hidden sm:inline">{tab.name}</span>
+                  <span className="sm:hidden">
+                    {tab.name === 'Tools Showcase' ? 'Tools' : 
+                     tab.name === 'All' ? 'All' : 
+                     tab.name.split(' ')[0]}
+                  </span>
+                </motion.button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -124,7 +132,7 @@ const CommunityHubPage = () => {
             <p className="mt-4 font-exo text-gray-400">Loading The Grid...</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             {posts.length > 0 ? (
               posts.map((post, index) => (
                 <motion.div

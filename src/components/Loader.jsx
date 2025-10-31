@@ -41,9 +41,9 @@ const BootText = ({ text, delay, showCursor = false }) => {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.3, delay, ease: [0.25, 0.1, 0.25, 1] }}
     >
-      <span className="text-cyber-blue/40 font-mono text-xs mt-0.5">▶</span>
-      <div className="flex-1">
-        <span className="font-mono text-xs sm:text-sm text-cyber-blue leading-relaxed">
+      <span className="text-cyber-blue/40 font-mono text-[10px] sm:text-xs mt-0.5 flex-shrink-0">▶</span>
+      <div className="flex-1 min-w-0">
+        <span className="font-mono text-[10px] sm:text-xs md:text-sm text-cyber-blue leading-relaxed break-words">
           {displayedText}
         </span>
         {showCursor && showCursorState && (
@@ -70,10 +70,10 @@ const ProgressBar = ({ progress, delay, label }) => {
   }, [progress, delay]);
 
   return (
-    <div className="ml-6 mt-1.5 mb-3">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-cyber-blue/60 font-mono">{label || 'LOADING'}</span>
-        <span className="text-xs text-cyber-blue/60 font-mono">{progress}%</span>
+    <div className="ml-4 sm:ml-6 mt-1 sm:mt-1.5 mb-2 sm:mb-3">
+      <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+        <span className="text-[10px] sm:text-xs text-cyber-blue/60 font-mono">{label || 'LOADING'}</span>
+        <span className="text-[10px] sm:text-xs text-cyber-blue/60 font-mono">{progress}%</span>
       </div>
       <div className="w-full h-1.5 bg-cyber-black/50 border border-cyber-blue/20 rounded-full overflow-hidden relative">
         <motion.div
@@ -94,10 +94,8 @@ const ProgressBar = ({ progress, delay, label }) => {
 };
 
 const Scanlines = () => (
-  <motion.div 
+  <div 
     className="absolute inset-0 pointer-events-none"
-    animate={{ y: [0, 2, 0] }}
-    transition={{ duration: 0.1, repeat: Infinity }}
     style={{
       background: 'repeating-linear-gradient(0deg, rgba(0, 224, 255, 0.03), rgba(0, 224, 255, 0.03) 1px, transparent 1px, transparent 2px)'
     }} 
@@ -177,7 +175,14 @@ const Loader = () => {
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-cyber-black overflow-hidden"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-y-auto overflow-x-hidden"
+      style={{ 
+        backgroundColor: '#000000',
+        minHeight: '100vh',
+        minWidth: '100vw',
+        paddingTop: 'max(1rem, env(safe-area-inset-top))',
+        paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+      }}
       initial={{ opacity: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
@@ -224,34 +229,35 @@ const Loader = () => {
 
       {/* Main container */}
       <motion.div
-        className="relative w-full max-w-3xl mx-4 font-mono"
+        className="relative w-full max-w-3xl mx-4 px-2 md:px-4 font-mono overflow-y-auto"
+        style={{ maxHeight: '90vh' }}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2 }}
       >
         {/* Professional header */}
         <motion.div
-          className="flex items-center justify-between mb-8 pb-4 border-b border-cyber-blue/20"
+          className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 sm:mb-8 pb-3 sm:pb-4 border-b border-cyber-blue/20 gap-3 sm:gap-0"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <div>
-              <h1 className="font-orbitron text-xl font-bold text-cyber-blue tracking-wider">
+              <h1 className="font-orbitron text-base sm:text-xl font-bold text-cyber-blue tracking-wider">
                 CLAWNET SYSTEM
               </h1>
-              <p className="text-xs text-cyber-blue/60 font-mono mt-0.5">BOOT SEQUENCE v3.14.159</p>
+              <p className="text-[10px] sm:text-xs text-cyber-blue/60 font-mono mt-0.5">BOOT SEQUENCE v3.14.159</p>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-cyber-blue/80 font-mono">{new Date().toLocaleDateString()}</div>
-            <div className="text-xs text-cyber-blue/60 font-mono">{new Date().toLocaleTimeString()}</div>
+          <div className="text-left sm:text-right">
+            <div className="text-[10px] sm:text-xs text-cyber-blue/80 font-mono">{new Date().toLocaleDateString()}</div>
+            <div className="text-[10px] sm:text-xs text-cyber-blue/60 font-mono">{new Date().toLocaleTimeString()}</div>
           </div>
         </motion.div>
 
         {/* Boot sequence */}
-        <div className="space-y-1 min-h-[400px]">
+        <div className="space-y-0.5 sm:space-y-1 min-h-[300px] sm:min-h-[400px]">
           {bootSequence.map((item, index) => (
             <div key={index}>
               <BootText 
@@ -272,21 +278,21 @@ const Loader = () => {
 
         {/* Footer with system info */}
         <motion.div
-          className="mt-8 pt-4 border-t border-cyber-blue/20"
+          className="mt-6 sm:mt-8 pt-3 sm:pt-4 border-t border-cyber-blue/20"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.6, ease: 'easeOut' }}
         >
-          <div className="flex justify-between items-center flex-wrap gap-4 text-xs">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4 text-[10px] sm:text-xs">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-green-400 animate-pulse" />
                 <span className="text-cyber-blue/80 font-mono">SYSTEM STATUS: OPERATIONAL</span>
               </div>
             </div>
-            <div className="flex items-center gap-4 text-cyber-blue/60 font-mono">
+            <div className="flex items-center gap-2 sm:gap-4 text-cyber-blue/60 font-mono">
               <span>UPTIME: 00:00:00</span>
-              <span>•</span>
+              <span className="hidden sm:inline">•</span>
               <span>LOAD: 0.12</span>
             </div>
           </div>

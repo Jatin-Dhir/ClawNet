@@ -10,7 +10,6 @@ import Loader from './components/Loader';
 import AuthModal from './components/auth/AuthModal';
 import MatrixTransition from './components/MatrixTransition';
 import ClawNetTerminal from './components/terminal/ClawNetTerminal';
-import QuantumViewToggle from './components/QuantumViewToggle';
 
 import LandingPage from './pages/LandingPage';
 import CommunityHubPage from './pages/CommunityHubPage';
@@ -71,7 +70,6 @@ const Layout = () => {
         }} />
       </main>
       <Footer />
-      <QuantumViewToggle />
       <AnimatePresence>
         {isAuthModalOpen && <AuthModal onClose={() => setIsAuthModalOpen(false)} />}
       </AnimatePresence>

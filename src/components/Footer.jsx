@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { Shield, Github, Linkedin, Twitter, MessageCircle, Send, Instagram } from 'lucide-react';
+import { Shield, Github, Linkedin, MessageCircle, Send, Instagram } from 'lucide-react';
 
 const Footer = () => {
   const navigate = useNavigate();
@@ -16,7 +16,6 @@ const Footer = () => {
   const socials = [
     { icon: Github, href: 'https://github.com', label: 'GitHub' },
     { icon: Linkedin, href: 'https://linkedin.com', label: 'LinkedIn' },
-    { icon: Twitter, href: 'https://twitter.com', label: 'Twitter' },
     { icon: MessageCircle, href: 'https://discord.com', label: 'Discord' },
     { icon: Send, href: 'https://telegram.org', label: 'Telegram' },
     { icon: Instagram, href: 'https://instagram.com', label: 'Instagram' },

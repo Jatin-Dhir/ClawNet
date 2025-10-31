@@ -5,13 +5,28 @@ import { useQuantumView } from '../contexts/QuantumViewContext';
 
 const QuantumViewToggle = () => {
   const { isQuantumView, toggleQuantumView } = useQuantumView();
+  const [isHovered, setIsHovered] = React.useState(false);
+
+  // Hide button when inactive unless hovered
+  const shouldShow = isQuantumView || isHovered;
 
   return (
     <motion.button
-      onClick={toggleQuantumView}
+      onClick={(e) => {
+        e.stopPropagation();
+        toggleQuantumView();
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
-      className={`fixed top-24 right-6 z-40 p-3 rounded-lg border transition-all ${
+      animate={{
+        opacity: shouldShow ? 1 : 0.3,
+        scale: shouldShow ? 1 : 0.9,
+      }}
+      transition={{ duration: 0.3 }}
+      style={{ cursor: 'pointer' }}
+      className={`fixed top-20 md:top-24 right-4 md:right-6 z-50 p-2.5 md:p-3 rounded-lg border transition-all touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center no-quantum-transform ${
         isQuantumView
           ? 'bg-gradient-to-br from-purple-500/20 to-cyan-500/20 border-purple-400/50 shadow-lg shadow-purple-500/30'
           : 'bg-cyber-gray/80 backdrop-blur-sm border-cyber-blue/30 hover:border-cyber-blue/60'
@@ -29,8 +44,8 @@ const QuantumViewToggle = () => {
         }}
       >
         <Sparkles
-          className={isQuantumView ? 'text-purple-400' : 'text-cyber-blue'}
-          size={20}
+          className={`${isQuantumView ? 'text-purple-400' : 'text-cyber-blue'} w-[18px] h-[18px] md:w-5 md:h-5`}
+          size={18}
           strokeWidth={2}
         />
       </motion.div>

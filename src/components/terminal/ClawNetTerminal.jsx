@@ -412,17 +412,16 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: isGlitching ? [1, 0.5, 1] : 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
-        className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-cyber-black/80 backdrop-blur-sm ${isGlitching ? 'glitch-effect' : ''}`}
+        className={`fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-cyber-black/80 backdrop-blur-sm ${isGlitching ? 'glitch-effect' : ''}`}
         onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
+          if (e.target === e.currentTarget && window.innerWidth >= 768) onClose();
         }}
       >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative w-full max-w-3xl bg-cyber-dark/98 backdrop-blur-md rounded-lg overflow-hidden"
+        className="relative w-full h-full md:h-auto md:w-full md:max-w-3xl rounded-none md:rounded-lg bg-cyber-dark/98 backdrop-blur-md overflow-hidden"
         style={{ 
-          borderRadius: '12px',
           border: '1px solid rgba(0, 224, 255, 0.2)',
           boxShadow: `
             0 0 0 1px rgba(0, 224, 255, 0.1),
@@ -457,15 +456,16 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white hover:bg-red-500/10 transition-all p-1.5 rounded"
+            className="text-gray-400 hover:text-white hover:bg-red-500/10 transition-all p-2 md:p-1.5 rounded touch-manipulation"
+            aria-label="Close terminal"
           >
-            <X size={16} />
+            <X size={18} className="md:w-4 md:h-4" />
           </button>
         </div>
 
         {/* Terminal Content */}
-        <div className="relative h-[450px] overflow-hidden bg-cyber-black/20">
-          <div className="h-full overflow-y-auto p-6 font-mono text-sm space-y-2">
+        <div className="relative h-[calc(100vh-120px)] md:h-[450px] overflow-hidden bg-cyber-black/20">
+          <div className="h-full overflow-y-auto p-4 md:p-6 font-mono text-xs md:text-sm space-y-2">
             <AnimatePresence mode="popLayout">
               {history.map((item, index) => (
                 <motion.div
@@ -506,9 +506,9 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
         </div>
 
         {/* Input Section */}
-        <form onSubmit={handleSubmit} className="relative border-t border-cyber-blue/20 bg-cyber-black/50 p-4">
+        <form onSubmit={handleSubmit} className="relative border-t border-cyber-blue/20 bg-cyber-black/50 p-3 md:p-4">
           <div className="flex items-center gap-2">
-            <span className="text-cyber-blue font-mono text-sm font-medium">
+            <span className="text-cyber-blue font-mono text-xs md:text-sm font-medium flex-shrink-0">
               clawnet@grid&gt;
             </span>
             <input
@@ -517,10 +517,11 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="flex-1 bg-transparent text-white outline-none font-mono text-sm placeholder-gray-600"
+              className="flex-1 bg-transparent text-white outline-none font-mono text-xs md:text-sm placeholder-gray-600 min-w-0"
               placeholder="Enter command..."
               autoComplete="off"
               autoFocus
+              inputMode="text"
             />
             <motion.span
               animate={{ opacity: [1, 0, 1] }}

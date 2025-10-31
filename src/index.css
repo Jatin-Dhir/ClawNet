@@ -3,9 +3,33 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    overflow-x: hidden;
+    overflow-y: auto;
+    height: 100%;
+  }
+  
   body {
     @apply bg-cyber-black text-white font-exo antialiased;
     overflow-x: hidden;
+    position: relative;
+    min-height: 100%;
+  }
+
+  /* Hide scrollbar for horizontal scroll on mobile */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Better touch targets for mobile */
+  .touch-manipulation {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   html {
@@ -338,83 +362,5 @@
       filter: blur(5px);
     }
   }
-
-  /* Quantum View Effects */
-  body.quantum-view-active {
-    filter: invert(1) hue-rotate(180deg) saturate(1.1);
-    animation: quantum-tilt 5s ease-in-out infinite;
-    perspective: 1200px;
-    transform-style: preserve-3d;
-  }
-
-  body.quantum-view-active #root {
-    animation: quantum-ripple 4s ease-in-out infinite;
-  }
-
-  body.quantum-view-active .cyber-card,
-  body.quantum-view-active .bg-cyber-black,
-  body.quantum-view-active .bg-cyber-dark,
-  body.quantum-view-active .bg-cyber-gray {
-    animation: quantum-ripple 3.5s ease-in-out infinite;
-  }
-
-  @keyframes quantum-ripple {
-    0%, 100% {
-      transform: translateZ(0) rotateY(0deg);
-      filter: blur(0px);
-    }
-    33% {
-      transform: translateZ(3px) rotateY(0.8deg);
-      filter: blur(0.3px);
-    }
-    66% {
-      transform: translateZ(-3px) rotateY(-0.8deg);
-      filter: blur(0.3px);
-    }
-  }
-
-  @keyframes quantum-tilt {
-    0%, 100% {
-      transform: perspective(1200px) rotateX(0deg) rotateY(0deg) rotateZ(0deg);
-    }
-    25% {
-      transform: perspective(1200px) rotateX(0.3deg) rotateY(0.5deg) rotateZ(0.1deg);
-    }
-    50% {
-      transform: perspective(1200px) rotateX(0deg) rotateY(0deg) rotateZ(0deg);
-    }
-    75% {
-      transform: perspective(1200px) rotateX(-0.3deg) rotateY(-0.5deg) rotateZ(-0.1deg);
-    }
-  }
-
-  body.quantum-view-active::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: radial-gradient(
-      circle at 50% 50%,
-      rgba(196, 132, 252, 0.08) 0%,
-      rgba(59, 130, 246, 0.05) 50%,
-      transparent 70%
-    );
-    pointer-events: none;
-    z-index: 9998;
-    animation: quantum-pulse 4s ease-in-out infinite;
-  }
-
-  @keyframes quantum-pulse {
-    0%, 100% {
-      opacity: 0.4;
-      transform: scale(1);
-    }
-    50% {
-      opacity: 0.7;
-      transform: scale(1.05);
-    }
-  }
-
-  body.quantum-view-active * {
-    transition: filter 0.3s ease, transform 0.3s ease;
-  }
 }
+
