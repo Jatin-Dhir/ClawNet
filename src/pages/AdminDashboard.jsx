@@ -466,10 +466,13 @@ const AdminDashboard = () => {
   };
 
   const seedSampleData = async () => {
-    if (!confirm('This will add sample data to the database. Continue?')) return;
+    if (!confirm('This will add comprehensive sample data to the database. Continue?')) return;
     
     try {
       toast.loading('Seeding sample data...');
+      
+      // First, get current user ID
+      const currentUserId = session.user.id;
       
       // Seed service requests
       const sampleServiceRequests = [
@@ -500,21 +503,51 @@ const AdminDashboard = () => {
           service_name: 'Incident Response & Forensics',
           message: 'Suspected data breach. Need immediate incident response assistance.',
           status: 'completed'
+        },
+        {
+          user_email: 'david.kim@enterprise.com',
+          service_type: 'network-security',
+          service_name: 'Network Security Assessment',
+          message: 'Need assessment for our corporate network infrastructure including firewalls and VPN configurations.',
+          status: 'pending'
+        },
+        {
+          user_email: 'lisa.patel@healthcare.org',
+          service_type: 'custom-solutions',
+          service_name: 'Custom Security Solutions',
+          message: 'We need a custom HIPAA-compliant security monitoring system for our healthcare platform.',
+          status: 'pending'
         }
       ];
 
       await supabase.from('service_requests').insert(sampleServiceRequests);
 
-      // Seed download stats
+      // Seed download stats (more diverse)
       const sampleDownloads = [
-        { tool_name: 'ClawView', platform: 'windows', version: 'v2.1.0', file_path: 'clawview/clawview-v2.1.0.exe' },
-        { tool_name: 'PortLock', platform: 'linux', version: 'v1.5.0', file_path: 'portlock/portlock-v1.5.0.tar.gz' },
-        { tool_name: 'ClawNet Core', platform: 'macos', version: 'v0.8.1', file_path: 'clawnet-core/clawnet-core-v0.8.1.dmg' },
-        { tool_name: 'ClawView', platform: 'windows', version: 'v2.1.0', file_path: 'clawview/clawview-v2.1.0.exe' },
-        { tool_name: 'PortLock', platform: 'windows', version: 'v1.5.0', file_path: 'portlock/portlock-v1.5.0.exe' }
+        { tool_name: 'ClawView', platform: 'windows', version: 'v2.1.0', file_path: 'clawview/clawview-v2.1.0.exe', user_id: currentUserId },
+        { tool_name: 'PortLock', platform: 'linux', version: 'v1.5.0', file_path: 'portlock/portlock-v1.5.0.tar.gz', user_id: currentUserId },
+        { tool_name: 'ClawNet Core', platform: 'macos', version: 'v0.8.1', file_path: 'clawnet-core/clawnet-core-v0.8.1.dmg', user_id: currentUserId },
+        { tool_name: 'ClawView', platform: 'windows', version: 'v2.1.0', file_path: 'clawview/clawview-v2.1.0.exe', user_id: currentUserId },
+        { tool_name: 'PortLock', platform: 'windows', version: 'v1.5.0', file_path: 'portlock/portlock-v1.5.0.exe', user_id: currentUserId },
+        { tool_name: 'ClawView', platform: 'macos', version: 'v2.1.0', file_path: 'clawview/clawview-v2.1.0.dmg', user_id: currentUserId },
+        { tool_name: 'ClawNet Core', platform: 'linux', version: 'v0.8.1', file_path: 'clawnet-core/clawnet-core-v0.8.1-linux.tar.gz', user_id: currentUserId },
+        { tool_name: 'PortLock', platform: 'linux', version: 'v1.5.0', file_path: 'portlock/portlock-v1.5.0.tar.gz', user_id: currentUserId },
+        { tool_name: 'ClawView', platform: 'windows', version: 'v2.0.5', file_path: 'clawview/clawview-v2.0.5.exe', user_id: currentUserId },
+        { tool_name: 'PortLock', platform: 'windows', version: 'v1.4.2', file_path: 'portlock/portlock-v1.4.2.exe', user_id: currentUserId }
       ];
 
       await supabase.from('download_stats').insert(sampleDownloads);
+
+      // Seed analytics events
+      const sampleAnalytics = [
+        { event_type: 'page_view', entity_type: 'service', entity_id: 'vapt', user_id: currentUserId, metadata: { page: '/services/vapt' } },
+        { event_type: 'download', entity_type: 'tool', entity_id: 'clawview', user_id: currentUserId, metadata: { tool: 'ClawView' } },
+        { event_type: 'page_view', entity_type: 'service', entity_id: 'web-security', user_id: currentUserId, metadata: { page: '/services/web-application-security' } },
+        { event_type: 'download', entity_type: 'tool', entity_id: 'portlock', user_id: currentUserId, metadata: { tool: 'PortLock' } },
+        { event_type: 'service_view', entity_type: 'service', entity_id: 'cloud-security', user_id: currentUserId, metadata: { service: 'Cloud Security Review' } }
+      ];
+
+      await supabase.from('analytics').insert(sampleAnalytics);
 
       toast.dismiss();
       toast.success('Sample data seeded successfully!');
@@ -607,18 +640,18 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            <div className="flex items-start gap-6">
-              <div className="p-4 bg-gradient-to-br from-cyber-blue to-cyber-cyan rounded-xl">
-                <Shield className="w-12 h-12 text-white" />
+            <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
+              <div className="p-3 sm:p-4 bg-gradient-to-br from-cyber-blue to-cyber-cyan rounded-xl">
+                <Shield className="w-8 h-8 sm:w-12 sm:h-12 text-white" />
               </div>
               <div className="flex-1">
-                <h1 className="font-orbitron text-5xl md:text-6xl font-black leading-tight mb-2">
+                <h1 className="font-orbitron text-3xl sm:text-5xl md:text-6xl font-black leading-tight mb-2">
                   ADMIN CONTROL
                 </h1>
-                <p className="font-exo text-lg text-gray-400 mb-4">
+                <p className="font-exo text-base sm:text-lg text-gray-400 mb-4">
                   ProjectClawNet Dashboard & Analytics
                 </p>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                   <div className="flex items-center gap-2 px-3 py-1 bg-cyber-blue/10 border border-cyber-blue/30 rounded-full">
                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                     <span className="font-exo text-xs text-green-400 uppercase tracking-wider">System Operational</span>
@@ -646,7 +679,7 @@ const AdminDashboard = () => {
                   <motion.button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 px-6 py-3 border-b-2 transition-all font-exo font-bold text-sm uppercase tracking-wider whitespace-nowrap ${
+                    className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-2 sm:py-3 border-b-2 transition-all font-exo font-bold text-xs sm:text-sm uppercase tracking-wider whitespace-nowrap ${
                       activeTab === tab.id
                         ? 'border-cyber-blue text-cyber-blue'
                         : 'border-transparent text-gray-400 hover:text-white'
@@ -654,7 +687,8 @@ const AdminDashboard = () => {
                     whileHover={{ y: -2 }}
                   >
                     <Icon className="w-4 h-4" />
-                    {tab.label}
+                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
                   </motion.button>
                 );
               })}
@@ -665,7 +699,7 @@ const AdminDashboard = () => {
           {activeTab === 'overview' && (
             <>
               {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-8 sm:mb-12">
             {stats.map((stat, index) => {
               const Icon = stat.icon;
               return (
@@ -676,16 +710,16 @@ const AdminDashboard = () => {
                   transition={{ delay: index * 0.1 }}
                   className="p-6 bg-gradient-to-br from-white/5 to-white/0 border border-white/10 rounded-xl backdrop-blur-sm hover:border-cyber-blue/50 transition-all group"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <Icon className={`w-8 h-8 ${stat.color}`} />
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <Icon className={`w-6 h-6 sm:w-8 sm:h-8 ${stat.color}`} />
                     {stat.change && (
                       <div className="flex items-center gap-1 text-green-400">
-                        <TrendingUp className="w-4 h-4" />
+                        <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
                         <span className="font-exo text-xs font-bold">{stat.change}</span>
                       </div>
                     )}
                   </div>
-                  <div className="font-orbitron text-3xl font-black text-white mb-1">{stat.value}</div>
+                  <div className="font-orbitron text-2xl sm:text-3xl font-black text-white mb-1">{stat.value}</div>
                   <div className="font-exo text-xs text-gray-400 uppercase tracking-wider">{stat.label}</div>
                 </motion.div>
               );
@@ -693,21 +727,21 @@ const AdminDashboard = () => {
           </div>
 
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-12">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-8 sm:mb-12">
             {/* Recent Service Requests */}
             <div className="lg:col-span-2">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={isInView ? { opacity: 1, y: 0 } : {}}
                 transition={{ delay: 0.3 }}
-                className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm"
+                className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm"
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="font-orbitron text-2xl font-bold flex items-center gap-3">
-                    <Mail className="w-6 h-6 text-cyber-blue" />
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-3">
+                  <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3">
+                    <Mail className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                     Service Requests
                   </h2>
-                  <span className="px-3 py-1 bg-red-500/20 border border-red-500/50 rounded-full text-xs font-exo text-red-400">
+                  <span className="px-3 py-1 bg-red-500/20 border border-red-500/50 rounded-full text-xs font-exo text-red-400 w-fit">
                     {analytics.pendingServiceRequests} Pending
                   </span>
                 </div>
@@ -769,10 +803,10 @@ const AdminDashboard = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={isInView ? { opacity: 1, y: 0 } : {}}
                 transition={{ delay: 0.4 }}
-                className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm"
+                className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm"
               >
-                <h2 className="font-orbitron text-2xl font-bold flex items-center gap-3 mb-6">
-                  <Zap className="w-6 h-6 text-cyber-blue" />
+                <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                  <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                   Quick Actions
                 </h2>
                 <div className="space-y-3">
@@ -800,10 +834,10 @@ const AdminDashboard = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={isInView ? { opacity: 1, y: 0 } : {}}
                 transition={{ delay: 0.5 }}
-                className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm mt-6"
+                className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm mt-4 sm:mt-6"
               >
-                <h2 className="font-orbitron text-2xl font-bold flex items-center gap-3 mb-6">
-                  <Download className="w-6 h-6 text-cyber-blue" />
+                <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                  <Download className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                   Downloads
                 </h2>
                 <div className="space-y-4">
@@ -829,16 +863,16 @@ const AdminDashboard = () => {
           </div>
 
           {/* Recent Posts & Users */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Recent Posts */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={isInView ? { opacity: 1, y: 0 } : {}}
               transition={{ delay: 0.6 }}
-              className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm"
+              className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm"
             >
-              <h2 className="font-orbitron text-2xl font-bold flex items-center gap-3 mb-6">
-                <FileText className="w-6 h-6 text-cyber-blue" />
+              <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                 Recent Posts
               </h2>
               <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -881,10 +915,10 @@ const AdminDashboard = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={isInView ? { opacity: 1, y: 0 } : {}}
               transition={{ delay: 0.7 }}
-              className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm"
+              className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm"
             >
-              <h2 className="font-orbitron text-2xl font-bold flex items-center gap-3 mb-6">
-                <Users className="w-6 h-6 text-cyber-blue" />
+              <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                <Users className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                 Recent Users
               </h2>
               <div className="space-y-3">
@@ -926,9 +960,9 @@ const AdminDashboard = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <div className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
-                <h2 className="font-orbitron text-2xl font-bold mb-6">User Management</h2>
-                <div className="flex items-center gap-4 mb-6">
+              <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+                <h2 className="font-orbitron text-xl sm:text-2xl font-bold mb-4 sm:mb-6">User Management</h2>
+                <div className="flex items-center gap-4 mb-4 sm:mb-6">
                   <div className="flex-1 relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <input
@@ -940,7 +974,7 @@ const AdminDashboard = () => {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {analytics.recentUsers
                     .filter(user => user.username?.toLowerCase().includes(searchQuery.toLowerCase()))
                     .map((user) => (
@@ -964,7 +998,7 @@ const AdminDashboard = () => {
                             <span className="font-exo text-gray-300">{new Date(user.created_at).toLocaleDateString()}</span>
                           </div>
                           <button
-                            onClick={() => handleBanUser(user.id)}
+                            onClick={() => handleBanUser(user.id, user.username)}
                             className="w-full mt-3 px-3 py-1.5 text-xs font-exo font-bold uppercase tracking-wider bg-red-500/20 border border-red-500/50 rounded hover:bg-red-500/30 transition-all flex items-center justify-center gap-2"
                           >
                             <Ban className="w-3 h-3" />
@@ -983,10 +1017,10 @@ const AdminDashboard = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
-                  <h2 className="font-orbitron text-2xl font-bold mb-6 flex items-center gap-3">
-                    <Tag className="w-6 h-6 text-cyber-blue" />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+                  <h2 className="font-orbitron text-xl sm:text-2xl font-bold mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
+                    <Tag className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                     Top Tags
                   </h2>
                   <div className="space-y-3">
@@ -1006,9 +1040,9 @@ const AdminDashboard = () => {
                   </div>
                 </div>
 
-                <div className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
-                  <h2 className="font-orbitron text-2xl font-bold mb-6 flex items-center gap-3">
-                    <Users className="w-6 h-6 text-cyber-blue" />
+                <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+                  <h2 className="font-orbitron text-xl sm:text-2xl font-bold mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
+                    <Users className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                     Top Contributors
                   </h2>
                   <div className="space-y-3">
@@ -1036,13 +1070,13 @@ const AdminDashboard = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
-                  <h2 className="font-orbitron text-2xl font-bold mb-6 flex items-center gap-3">
-                    <Database className="w-6 h-6 text-cyber-blue" />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+                  <h2 className="font-orbitron text-xl sm:text-2xl font-bold mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
+                    <Database className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                     Database Management
                   </h2>
-                  <p className="font-exo text-sm text-gray-400 mb-6">Manage database operations and maintenance</p>
+                  <p className="font-exo text-sm text-gray-400 mb-4 sm:mb-6">Manage database operations and maintenance</p>
                   <div className="space-y-3">
                     <motion.button
                       onClick={fetchDatabaseStats}
@@ -1114,12 +1148,12 @@ const AdminDashboard = () => {
                   )}
                 </div>
 
-                <div className="p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
-                  <h2 className="font-orbitron text-2xl font-bold mb-6 flex items-center gap-3">
-                    <Shield className="w-6 h-6 text-cyber-blue" />
+                <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+                  <h2 className="font-orbitron text-xl sm:text-2xl font-bold mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
+                    <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                     Security Settings
                   </h2>
-                  <p className="font-exo text-sm text-gray-400 mb-6">Configure security policies and access controls</p>
+                  <p className="font-exo text-sm text-gray-400 mb-4 sm:mb-6">Configure security policies and access controls</p>
                   <div className="space-y-3">
                     <motion.button
                       onClick={() => { fetchAdmins(); setShowManageAdmins(!showManageAdmins); }}
