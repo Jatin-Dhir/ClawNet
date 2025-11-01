@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { 
@@ -7,7 +7,6 @@ import {
   Network, 
   Award, 
   GraduationCap, 
-  Mail,
   CheckCircle2,
   ArrowLeft,
   ArrowRight
