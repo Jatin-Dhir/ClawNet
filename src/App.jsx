@@ -16,6 +16,9 @@ import CommunityHubPage from './pages/CommunityHubPage';
 import TeamPage from './pages/TeamPage';
 import ToolDetailPage from './pages/ToolDetailPage';
 import ResearchPage from './pages/ResearchPage';
+import CyberOperationsPage from './pages/CyberOperationsPage';
+import ServiceDetailPage from './pages/ServiceDetailPage';
+import AdminDashboard from './pages/AdminDashboard';
 
 const Layout = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -146,6 +149,9 @@ function App() {
                 <Route index element={<LandingPage />} />
                 <Route path="hub" element={<CommunityHubPage />} />
                 <Route path="team" element={<TeamPage />} />
+                <Route path="cyber-operations" element={<CyberOperationsPage />} />
+                <Route path="services/:serviceId" element={<ServiceDetailPage />} />
+                <Route path="admin" element={<AdminDashboard />} />
                 <Route path="tools/:toolId" element={<ToolDetailPage />} />
                 <Route path="research/:postId" element={<ResearchPage />} />
               </Route>

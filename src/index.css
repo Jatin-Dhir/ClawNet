@@ -35,10 +35,29 @@
   html {
     scroll-behavior: smooth;
     scroll-padding-top: 80px;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* Enhanced smooth scrolling */
   @supports (scroll-behavior: smooth) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  /* Smooth scroll for all browsers */
+  * {
+    scroll-behavior: smooth;
+  }
+
+  /* Smooth scroll container */
+  body {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Smooth scroll animation */
+  @media (prefers-reduced-motion: no-preference) {
     html {
       scroll-behavior: smooth;
     }

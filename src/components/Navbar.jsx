@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Shield, Menu, X, LogOut, User, LayoutDashboard } from 'lucide-react';
+import { Shield, Menu, X, LogOut, User, LayoutDashboard, Settings, Lock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import SystemShutdown from './transitions/SystemShutdown';
 
@@ -9,6 +9,7 @@ const Navbar = ({ onSignInClick }) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { session, profile, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -20,6 +21,25 @@ const Navbar = ({ onSignInClick }) => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Check if user is admin
+  useEffect(() => {
+    const checkAdmin = async () => {
+      if (session?.user?.email) {
+        // You can set admin emails here or fetch from database
+        const adminEmails = [
+          'team@projectclawnet.online',
+          'admin@projectclawnet.online',
+          'dhirjatin@icloud.com',
+          // Add more admin emails here
+        ];
+        setIsAdmin(adminEmails.includes(session.user.email.toLowerCase()));
+      } else {
+        setIsAdmin(false);
+      }
+    };
+    checkAdmin();
+  }, [session]);
   
   const handleSignOut = async () => {
     setMobileMenuOpen(false);
@@ -34,6 +54,7 @@ const Navbar = ({ onSignInClick }) => {
   const navItems = [
     { name: 'About', href: '#about' },
     { name: 'Team', href: '/team' },
+    { name: 'Services', href: '/cyber-operations' },
     { name: 'Tools', href: '#tools' },
     { name: 'Intelligence', href: '#intelligence' },
     { name: 'Community', href: '#community' },
@@ -43,9 +64,13 @@ const Navbar = ({ onSignInClick }) => {
     e.preventDefault();
     setMobileMenuOpen(false);
     
-    // Handle team page navigation separately
+    // Handle page navigation separately
     if (href === '/team' || href === '#team') {
       navigate('/team');
+      return;
+    }
+    if (href === '/cyber-operations') {
+      navigate('/cyber-operations');
       return;
     }
     
@@ -101,6 +126,18 @@ const Navbar = ({ onSignInClick }) => {
               {session ? (
                 <div className="hidden md:flex items-center gap-4">
                   <span className="font-exo text-sm text-gray-300">Welcome, <span className="font-bold text-cyber-cyan">{profile?.username || 'User'}</span></span>
+                  {isAdmin && (
+                    <Link to="/admin" className="no-quantum-transform">
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyber-blue to-cyber-cyan rounded-md text-white text-sm font-bold no-quantum-transform"
+                      >
+                        <Lock size={16} />
+                        Admin
+                      </motion.button>
+                    </Link>
+                  )}
                   <Link to="/hub" className="no-quantum-transform">
                     <motion.button
                       whileHover={{ scale: 1.05 }}
@@ -246,6 +283,20 @@ const Navbar = ({ onSignInClick }) => {
                       </div>
                     </motion.li>
                     
+                    {/* Admin Link (if admin) */}
+                    {isAdmin && (
+                      <motion.li variants={{ hidden: { opacity: 0, y: -10 }, visible: { opacity: 1, y: 0 } }}>
+                        <Link 
+                          to="/admin" 
+                          onClick={() => setMobileMenuOpen(false)} 
+                          className="flex items-center gap-3 px-4 py-3 rounded-md text-cyber-cyan hover:text-white bg-gradient-to-r from-cyber-blue/10 to-cyber-cyan/10 hover:from-cyber-blue/20 hover:to-cyber-cyan/20 transition-colors touch-manipulation border-l-2 border-cyber-blue border-opacity-50"
+                        >
+                          <Lock size={18} className="text-cyber-cyan" />
+                          <span className="font-exo text-sm font-medium font-bold">Admin Panel</span>
+                        </Link>
+                      </motion.li>
+                    )}
+
                     {/* Hub Link */}
                     <motion.li variants={{ hidden: { opacity: 0, y: -10 }, visible: { opacity: 1, y: 0 } }}>
                       <Link 
