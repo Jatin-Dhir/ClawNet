@@ -33,3 +33,13 @@ yarn-error.log*
 # Misc
 .cache/
 .temp/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Prettier
+.prettiercache
+
+# Husky (optional - can be committed)
+# .husky/

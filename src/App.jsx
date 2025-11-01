@@ -13,6 +13,7 @@ import ClawNetTerminal from './components/terminal/ClawNetTerminal';
 
 import LandingPage from './pages/LandingPage';
 import CommunityHubPage from './pages/CommunityHubPage';
+import TeamPage from './pages/TeamPage';
 import ToolDetailPage from './pages/ToolDetailPage';
 import ResearchPage from './pages/ResearchPage';
 
@@ -144,6 +145,7 @@ function App() {
               <Route path="/" element={<Layout />}>
                 <Route index element={<LandingPage />} />
                 <Route path="hub" element={<CommunityHubPage />} />
+                <Route path="team" element={<TeamPage />} />
                 <Route path="tools/:toolId" element={<ToolDetailPage />} />
                 <Route path="research/:postId" element={<ResearchPage />} />
               </Route>

@@ -4,6 +4,7 @@ import { X, Loader, Send } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { sanitizeInput, validateURL } from '../../utils/security';
 
 const PostForm = ({ onClose, onPostCreated, editPost = null }) => {
   const { session } = useAuth();
@@ -24,13 +25,59 @@ const PostForm = ({ onClose, onPostCreated, editPost = null }) => {
     }
     setLoading(true);
 
+    // Sanitize and validate inputs
+    const sanitizedTitle = sanitizeInput(title).slice(0, 200); // Max 200 chars
+    const sanitizedContent = sanitizeInput(content).slice(0, 10000); // Max 10k chars
+    const sanitizedCodeSnippet = codeSnippet ? sanitizeInput(codeSnippet).slice(0, 50000) : null; // Max 50k chars for code
+
+    // Validate title length
+    if (!sanitizedTitle || sanitizedTitle.length < 3) {
+      toast.error('Title must be at least 3 characters long.');
+      setLoading(false);
+      return;
+    }
+
+    // Validate content length
+    if (!sanitizedContent || sanitizedContent.length < 10) {
+      toast.error('Content must be at least 10 characters long.');
+      setLoading(false);
+      return;
+    }
+
+    // Validate category
+    const validCategories = ['discussion', 'tool', 'research', 'project'];
+    if (!validCategories.includes(category)) {
+      toast.error('Invalid category selected.');
+      setLoading(false);
+      return;
+    }
+
+    // Validate and sanitize URL if provided
+    let validatedLink = null;
+    if (link) {
+      const urlValidation = validateURL(link);
+      if (!urlValidation.valid) {
+        toast.error(urlValidation.error || 'Invalid URL format.');
+        setLoading(false);
+        return;
+      }
+      validatedLink = urlValidation.sanitized;
+    }
+
+    // Sanitize tags
+    const sanitizedTags = tags
+      .split(',')
+      .map(tag => sanitizeInput(tag.trim()))
+      .filter(tag => tag.length > 0 && tag.length <= 50)
+      .slice(0, 10); // Max 10 tags
+
     const postData = {
-      title,
-      content,
-      link: link || null,
+      title: sanitizedTitle,
+      content: sanitizedContent,
+      link: validatedLink,
       category,
-      tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-      code_snippet: codeSnippet || null,
+      tags: sanitizedTags,
+      code_snippet: sanitizedCodeSnippet,
       ...(editPost ? {} : { user_id: user.id }),
     };
 

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { X, Loader } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { validateEmail, validatePassword, sanitizeInput } from '../../utils/security';
 
 const AuthModal = ({ onClose }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -17,8 +18,27 @@ const AuthModal = ({ onClose }) => {
     e.preventDefault();
     setLoading(true);
 
+    // Sanitize inputs
+    const sanitizedEmail = sanitizeInput(email).toLowerCase();
+    const sanitizedUsername = sanitizeInput(username);
+    const sanitizedPassword = password; // Don't sanitize password (might remove valid chars)
+
+    // Validate email
+    if (!validateEmail(sanitizedEmail)) {
+      toast.error('Please enter a valid email address.');
+      setLoading(false);
+      return;
+    }
+
     if (isLogin) {
-      const { error } = await signIn({ email, password });
+      // Basic validation for login
+      if (!sanitizedPassword || sanitizedPassword.length < 6) {
+        toast.error('Password must be at least 6 characters long.');
+        setLoading(false);
+        return;
+      }
+
+      const { error } = await signIn({ email: sanitizedEmail, password: sanitizedPassword });
       if (error) {
         toast.error(error.message);
       } else {
@@ -26,22 +46,47 @@ const AuthModal = ({ onClose }) => {
         onClose();
       }
     } else {
-      if (password !== confirmPassword) {
+      // Validation for signup
+      if (sanitizedPassword !== confirmPassword) {
         toast.error('Passwords do not match.');
         setLoading(false);
         return;
       }
-      if (!username) {
-        toast.error('Username is required.');
+
+      if (!sanitizedUsername || sanitizedUsername.length < 3) {
+        toast.error('Username must be at least 3 characters long.');
         setLoading(false);
         return;
       }
+
+      // Enhanced password validation
+      const passwordValidation = validatePassword(sanitizedPassword);
+      if (!passwordValidation.valid) {
+        toast.error(passwordValidation.errors[0] || 'Password does not meet requirements.');
+        setLoading(false);
+        return;
+      }
+
+      // Rate limiting check
+      const rateLimitKey = `signup_${sanitizedEmail}`;
+      // Simple rate limiting - max 3 signup attempts per hour per email
+      const attempts = JSON.parse(localStorage.getItem(rateLimitKey) || '[]');
+      const recentAttempts = attempts.filter(timestamp => Date.now() - timestamp < 3600000);
+      if (recentAttempts.length >= 3) {
+        toast.error('Too many signup attempts. Please try again later.');
+        setLoading(false);
+        return;
+      }
+
+      recentAttempts.push(Date.now());
+      localStorage.setItem(rateLimitKey, JSON.stringify(recentAttempts));
+
       const { error } = await signUp({
-        email,
-        password,
+        email: sanitizedEmail,
+        password: sanitizedPassword,
         options: {
           data: {
-            username: username,
+            username: sanitizedUsername,
           },
         },
       });

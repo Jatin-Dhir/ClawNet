@@ -22,6 +22,52 @@ export const initializeBucket = async () => {
 };
 
 /**
+ * Validate file before upload
+ * @param {File} file - The file to validate
+ * @param {string} platform - Platform (windows, macos, linux)
+ * @returns {{valid: boolean, error?: string}}
+ */
+const validateFile = (file, platform) => {
+  // File size limit: 50MB for free tier
+  const MAX_SIZE = 50 * 1024 * 1024; // 50MB
+  
+  if (file.size > MAX_SIZE) {
+    return { valid: false, error: 'File size exceeds 50MB limit' };
+  }
+  
+  // Allowed file types
+  const allowedTypes = {
+    windows: ['exe', 'msi'],
+    macos: ['dmg', 'pkg'],
+    linux: ['tar.gz', 'tar', 'deb', 'rpm']
+  };
+  
+  const fileExtension = file.name.split('.').pop()?.toLowerCase();
+  const allowedExtensions = allowedTypes[platform] || [];
+  
+  if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
+    return { 
+      valid: false, 
+      error: `Invalid file type. Allowed types for ${platform}: ${allowedExtensions.join(', ')}` 
+    };
+  }
+  
+  return { valid: true };
+};
+
+/**
+ * Sanitize filename to prevent directory traversal and other attacks
+ * @param {string} filename - The filename to sanitize
+ * @returns {string} - Sanitized filename
+ */
+const sanitizeFilename = (filename) => {
+  return filename
+    .replace(/[^a-zA-Z0-9._-]/g, '_') // Replace invalid chars
+    .replace(/\.\./g, '_') // Prevent directory traversal
+    .slice(0, 255); // Limit length
+};
+
+/**
  * Upload a file to Supabase Storage
  * @param {File} file - The file to upload
  * @param {string} toolName - Name of the tool (e.g., "PortLock")
@@ -31,20 +77,35 @@ export const initializeBucket = async () => {
  */
 export const uploadFile = async (file, toolName, platform, version) => {
   try {
-    const toolSlug = toolName.toLowerCase().replace(/\s+/g, '-');
+    // Validate file
+    const validation = validateFile(file, platform);
+    if (!validation.valid) {
+      return { data: null, error: new Error(validation.error) };
+    }
+    
+    // Sanitize inputs
+    const toolSlug = toolName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const sanitizedVersion = sanitizeFilename(version);
     let extension;
     
     if (platform === 'windows') extension = 'exe';
     else if (platform === 'macos') extension = 'dmg';
     else extension = 'tar.gz';
     
-    const filePath = `${toolSlug}/${platform}/${toolSlug}-${version}-${platform}.${extension}`;
+    // Validate platform
+    const validPlatforms = ['windows', 'macos', 'linux'];
+    if (!validPlatforms.includes(platform)) {
+      return { data: null, error: new Error('Invalid platform') };
+    }
+    
+    const filePath = `${toolSlug}/${platform}/${toolSlug}-${sanitizedVersion}-${platform}.${extension}`;
     
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(filePath, file, {
         cacheControl: '3600',
-        upsert: true // Replace if file exists
+        upsert: true, // Replace if file exists
+        contentType: 'application/octet-stream'
       });
     
     if (error) throw error;

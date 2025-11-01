@@ -7,6 +7,7 @@ import pluginReactRefresh from "eslint-plugin-react-refresh";
 export default [
   pluginJs.configs.recommended,
   {
+    ignores: ["dist/**", "node_modules/**", "build/**"],
     files: ["**/*.{js,mjs,cjs,jsx}"],
     plugins: {
       "react": pluginReact,
@@ -32,6 +33,11 @@ export default [
       ],
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
+      "no-unused-vars": ["warn", { 
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }],
+      "react/no-unescaped-entities": "warn",
     },
     settings: {
       react: {

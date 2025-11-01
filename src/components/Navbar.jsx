@@ -4,7 +4,6 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Shield, Menu, X, LogOut, User, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import SystemShutdown from './transitions/SystemShutdown';
-import toast from 'react-hot-toast';
 
 const Navbar = ({ onSignInClick }) => {
   const [scrolled, setScrolled] = useState(false);
@@ -34,6 +33,7 @@ const Navbar = ({ onSignInClick }) => {
 
   const navItems = [
     { name: 'About', href: '#about' },
+    { name: 'Team', href: '/team' },
     { name: 'Tools', href: '#tools' },
     { name: 'Intelligence', href: '#intelligence' },
     { name: 'Community', href: '#community' },
@@ -42,6 +42,13 @@ const Navbar = ({ onSignInClick }) => {
   const scrollToSection = (e, href) => {
     e.preventDefault();
     setMobileMenuOpen(false);
+    
+    // Handle team page navigation separately
+    if (href === '/team' || href === '#team') {
+      navigate('/team');
+      return;
+    }
+    
     if (location.pathname !== '/') {
       navigate('/');
       setTimeout(() => {
