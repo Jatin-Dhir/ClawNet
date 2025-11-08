@@ -10,6 +10,7 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isGlitching, setIsGlitching] = useState(false);
   const inputRef = useRef(null);
+  const outputContainerRef = useRef(null);
   const navigate = useNavigate();
   const typingIntervalsRef = useRef([]);
 
@@ -274,29 +275,76 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
       }
     },
     help: () => {
-      addOutput('Available Commands:');
-      let accumulatedDelay = 'Available Commands:'.length * 15 + 200;
-      const helpLines = [
-        '  connect [portlock|clawview|clawnetcore]',
-        '  join the_grid',
-        '  show [projects|tools]',
-        '  clawstats',
-        '  scan',
-        '  ping [host]',
-        '  whoami',
-        '  date',
-        '  ls',
-        '  echo [text]',
-        '  version',
-        '  sudo kill all',
-        '  clear',
-        '  help'
+      const helpHeader = [
+        '╭──────────────────────────╮',
+        '│    CLAWNET COMMAND MAP   │',
+        '╰──────────────────────────╯',
       ];
-      helpLines.forEach((line) => {
-        setTimeout(() => {
-          addOutput(line, 'output', 0);
-        }, accumulatedDelay);
-        accumulatedDelay += line.length * 15 + 150;
+      const helpSections = [
+        {
+          title: 'Navigation & Access',
+          commands: [
+            { syntax: 'connect <destination>', description: 'Open a secure link to `portlock`, `clawview`, or `clawnetcore`.' },
+            { syntax: 'join the_grid', description: 'Jump directly into the Community Grid hub.' },
+          ],
+        },
+        {
+          title: 'Intelligence Feed',
+          commands: [
+            { syntax: 'show projects', description: 'List current R&D initiatives inside ClawNet Labs.' },
+            { syntax: 'show tools', description: 'Discover defensive suites available for rapid deployment.' },
+            { syntax: 'clawstats', description: 'View live operational metrics from the network core.' },
+          ],
+        },
+        {
+          title: 'Diagnostics & Utilities',
+          commands: [
+            { syntax: 'scan', description: 'Simulate a multi-stage perimeter scan with live status output.' },
+            { syntax: 'ping [host]', description: 'Probe connectivity to any host (defaults to grid.clawnet.io).' },
+            { syntax: 'whoami', description: 'Reveal the active session identity and permission tier.' },
+            { syntax: 'date', description: 'Print the current grid-synced timestamp.' },
+            { syntax: 'ls', description: 'Expose core directories inside the virtual workspace.' },
+            { syntax: 'echo [text]', description: 'Print a custom message back to the console stream.' },
+            { syntax: 'version', description: 'Display terminal build information.' },
+          ],
+        },
+        {
+          title: 'Critical Operations',
+          commands: [
+            { syntax: 'sudo kill all', description: 'Trigger the emergency kill chain (restricted).' },
+            { syntax: 'clear', description: 'Wipe the current session output.' },
+            { syntax: 'help', description: 'Show this enhanced guide.' },
+          ],
+        },
+      ];
+
+      let accumulatedDelay = 0;
+
+      helpHeader.forEach(line => {
+        setTimeout(() => addOutput(line, 'output', 0), accumulatedDelay);
+        accumulatedDelay += line.length * 10 + 120;
+      });
+
+      helpSections.forEach(section => {
+        setTimeout(() => addOutput(`\n${section.title}`, 'output', 0), accumulatedDelay);
+        accumulatedDelay += section.title.length * 10 + 120;
+
+        section.commands.forEach(cmd => {
+          const formattedLine = `  ${cmd.syntax.padEnd(22)} → ${cmd.description}`;
+          setTimeout(() => addOutput(formattedLine, 'output', 0), accumulatedDelay);
+          accumulatedDelay += formattedLine.length * 10 + 100;
+        });
+      });
+
+      const footerLines = [
+        '',
+        'Tip: Use ↑ and ↓ to cycle through previous commands.',
+        'Need a visual interface? Type `connect clawview` to launch the threat map.',
+      ];
+
+      footerLines.forEach(line => {
+        setTimeout(() => addOutput(line, 'output', 0), accumulatedDelay);
+        accumulatedDelay += Math.max(line.length, 10) * 10 + 120;
       });
     },
     clear: () => {
@@ -415,6 +463,15 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
       inputRef.current.focus();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (outputContainerRef.current) {
+      outputContainerRef.current.scrollTo({
+        top: outputContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
+  }, [history]);
 
   useEffect(() => {
     if (isOpen) {
@@ -604,7 +661,10 @@ const ClawNetTerminal = ({ isOpen, onClose }) => {
 
         {/* Terminal Content */}
         <div className="relative h-[calc(100vh-120px)] md:h-[450px] overflow-hidden bg-cyber-black/20">
-          <div className="h-full overflow-y-auto p-4 md:p-6 font-mono text-xs md:text-sm space-y-2">
+          <div
+            ref={outputContainerRef}
+            className="h-full overflow-y-auto p-4 md:p-6 font-mono text-xs md:text-sm space-y-2"
+          >
             <AnimatePresence mode="popLayout">
               {history.map((item, index) => (
                 <motion.div

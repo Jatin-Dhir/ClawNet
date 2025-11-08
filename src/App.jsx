@@ -19,6 +19,7 @@ import ResearchPage from './pages/ResearchPage';
 import CyberOperationsPage from './pages/CyberOperationsPage';
 import ServiceDetailPage from './pages/ServiceDetailPage';
 import AdminDashboard from './pages/AdminDashboard';
+import AboutPage from './pages/AboutPage';
 
 const Layout = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -149,6 +150,7 @@ function App() {
                 <Route index element={<LandingPage />} />
                 <Route path="hub" element={<CommunityHubPage />} />
                 <Route path="team" element={<TeamPage />} />
+                <Route path="about" element={<AboutPage />} />
                 <Route path="cyber-operations" element={<CyberOperationsPage />} />
                 <Route path="services/:serviceId" element={<ServiceDetailPage />} />
                 <Route path="admin" element={<AdminDashboard />} />

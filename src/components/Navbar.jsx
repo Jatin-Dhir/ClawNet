@@ -52,7 +52,7 @@ const Navbar = ({ onSignInClick }) => {
   };
 
   const navItems = [
-    { name: 'About', href: '#about' },
+    { name: 'About', href: '/about' },
     { name: 'Team', href: '/team' },
     { name: 'Services', href: '/cyber-operations' },
     { name: 'Tools', href: '#tools' },
@@ -63,14 +63,9 @@ const Navbar = ({ onSignInClick }) => {
   const scrollToSection = (e, href) => {
     e.preventDefault();
     setMobileMenuOpen(false);
-    
-    // Handle page navigation separately
-    if (href === '/team' || href === '#team') {
-      navigate('/team');
-      return;
-    }
-    if (href === '/cyber-operations') {
-      navigate('/cyber-operations');
+
+    if (href.startsWith('/')) {
+      navigate(href);
       return;
     }
     

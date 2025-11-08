@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import PostCard from '../components/community/PostCard';
 import PostForm from '../components/community/PostForm';
-import { Plus, MessageSquare, Wrench, BrainCircuit, Rocket, Filter } from 'lucide-react';
+import { Plus, MessageSquare, Wrench, BrainCircuit, Rocket, Filter, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const CommunityHubPage = () => {
@@ -15,6 +15,7 @@ const CommunityHubPage = () => {
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [filter, setFilter] = useState('All');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const tabs = [
     { name: 'All', icon: Filter },
@@ -32,7 +33,8 @@ const CommunityHubPage = () => {
         *,
         profiles:posts_user_id_fkey (
           username
-        )
+        ),
+        upvotes:upvotes(count)
       `)
       .order('created_at', { ascending: false });
 
@@ -49,7 +51,12 @@ const CommunityHubPage = () => {
       console.error('Error fetching posts:', error);
       toast.error('Could not fetch posts.');
     } else {
-      setPosts(data);
+      // Process upvote counts
+      const postsWithUpvotes = data.map(post => ({
+        ...post,
+        upvotes: post.upvotes?.[0]?.count || 0
+      }));
+      setPosts(postsWithUpvotes);
     }
     setLoading(false);
   };
@@ -68,6 +75,24 @@ const CommunityHubPage = () => {
     setEditingPost(post);
     setIsPostModalOpen(true);
   };
+
+  const filteredPosts = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return posts;
+    return posts.filter((post) => {
+      const tags = Array.isArray(post.tags) ? post.tags.join(' ') : '';
+      const haystack = [
+        post.title,
+        post.content,
+        tags,
+        post.profiles?.username,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [posts, searchTerm]);
 
   return (
     <div className="min-h-screen pt-24 pb-12">
@@ -94,19 +119,27 @@ const CommunityHubPage = () => {
           </motion.button>
         </motion.div>
 
-        <div className="mb-8">
+        <div className="mb-8 space-y-4">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-cyber-blue w-4 h-4" />
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search posts, tags, or authors..."
+              className="w-full bg-cyber-gray/30 border border-cyber-blue/20 rounded-md py-3 pl-10 pr-4 font-exo text-sm text-gray-200 placeholder-gray-500 outline-none focus:border-cyber-cyan transition-colors"
+            />
+          </div>
           <div className="bg-cyber-gray/20 backdrop-blur-sm border border-cyber-blue/10 rounded-lg p-2 overflow-x-auto scrollbar-hide">
             <div className="flex gap-2 min-w-max md:inline-flex">
               {tabs.map(tab => (
                 <motion.button
                   key={tab.name}
                   onClick={() => setFilter(tab.name)}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
                   className={`flex items-center gap-2 px-4 md:px-5 py-2.5 rounded-md font-orbitron text-xs md:text-sm font-semibold whitespace-nowrap transition-all ${
                     filter === tab.name
                       ? 'bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker shadow-lg shadow-cyber-blue/30'
-                      : 'text-gray-400 hover:text-white hover:bg-cyber-gray/30'
+                      : 'text-gray-400'
                   }`}
                 >
                   <tab.icon size={16} className="md:w-[18px] md:h-[18px]" />
@@ -133,8 +166,8 @@ const CommunityHubPage = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-            {posts.length > 0 ? (
-              posts.map((post, index) => (
+            {filteredPosts.length > 0 ? (
+              filteredPosts.map((post, index) => (
                 <motion.div
                   key={post.id}
                   initial={{ opacity: 0, y: 30, scale: 0.95 }}
@@ -154,8 +187,12 @@ const CommunityHubPage = () => {
               ))
             ) : (
               <div className="col-span-2 text-center py-16 cyber-card">
-                <h3 className="font-orbitron text-2xl text-gray-400 mb-2">No posts found in this category.</h3>
-                <p className="font-exo text-gray-500">Be the first to contribute!</p>
+                <h3 className="font-orbitron text-2xl text-gray-400 mb-2">
+                  {searchTerm.trim() ? 'No posts match your search.' : 'No posts found in this category.'}
+                </h3>
+                <p className="font-exo text-gray-500">
+                  {searchTerm.trim() ? 'Try different keywords or clear the search box.' : 'Be the first to contribute!'}
+                </p>
               </div>
             )}
           </div>

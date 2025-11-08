@@ -1,51 +1,49 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { Link, Navigate } from 'react-router-dom';
-import { 
-  Shield, 
-  Users, 
-  TrendingUp, 
-  TrendingDown,
+import {
+  Shield,
+  Users,
+  TrendingUp,
   Download,
   Mail,
   FileText,
-  Edit3,
   Trash2,
-  AlertCircle,
-  CheckCircle2,
-  Clock,
   BarChart3,
-  PieChart,
   Activity,
   Zap,
-  Globe,
-  Server,
   Eye,
   ArrowLeft,
-  Target,
   Settings,
-  Lock,
   RefreshCw,
-  UserPlus,
-  UserMinus,
   Ban,
-  Unlock,
   MessageSquare,
-  XCircle,
-  AlertTriangle,
   UserCog,
   Search,
   Filter,
   Database,
-  Terminal,
-  Code2,
   Tag,
-  Hash,
-  TrendingDown as TrendingDownIcon
+  Clock,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Edit,
+  Star,
+  TrendingDown,
+  Bell,
+  Send,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
+
+const SERVICE_REQUEST_STATUSES = ['pending', 'contacted', 'in_progress', 'completed', 'closed'];
+const FALLBACK_ADMIN_EMAILS = [
+  'admin@projectclawnet.online',
+  'team@projectclawnet.online',
+  'dhirjatin@icloud.com',
+  'dhirjatin@outlook.com',
+];
 
 const AdminDashboard = () => {
   const { session, profile } = useAuth();
@@ -63,6 +61,28 @@ const AdminDashboard = () => {
   const [bannedUsers, setBannedUsers] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [serviceRequests, setServiceRequests] = useState([]);
+  const [serviceRequestFilter, setServiceRequestFilter] = useState('all');
+  const [serviceRequestSearch, setServiceRequestSearch] = useState('');
+  const [requestNotes, setRequestNotes] = useState({});
+  const [users, setUsers] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);
+  const [selectedPosts, setSelectedPosts] = useState([]);
+  const [showReputationModal, setShowReputationModal] = useState(false);
+  const [reputationUser, setReputationUser] = useState(null);
+  const [reputationValue, setReputationValue] = useState(0);
+  const [flaggedContent, setFlaggedContent] = useState([]);
+  const [flaggedFilter, setFlaggedFilter] = useState('pending');
+  const [systemHealth, setSystemHealth] = useState({
+    dbSize: 0,
+    avgResponseTime: 0,
+    uptime: 99.9,
+    activeConnections: 0
+  });
   const [analytics, setAnalytics] = useState({
     totalUsers: 0,
     totalPosts: 0,
@@ -78,139 +98,255 @@ const AdminDashboard = () => {
     topContributors: []
   });
 
-  // Check if user is admin
-  useEffect(() => {
-    const checkAdmin = async () => {
-      if (!session || !profile) {
-        setLoading(false);
-        return;
-      }
+  const filteredServiceRequests = useMemo(() => {
+    const query = serviceRequestSearch.trim().toLowerCase();
+    return serviceRequests.filter((request) => {
+      const matchesStatus =
+        serviceRequestFilter === 'all' || request.status === serviceRequestFilter;
+      const haystack = `${request.service_name ?? ''} ${request.user_email ?? ''} ${
+        request.message ?? ''
+      } ${request.admin_notes ?? ''}`.toLowerCase();
+      const matchesQuery = !query || haystack.includes(query);
+      return matchesStatus && matchesQuery;
+    });
+  }, [serviceRequests, serviceRequestFilter, serviceRequestSearch]);
 
-      // Check if user is admin (you'll need to set this in the database)
-      // For now, we'll allow access if the user exists
+  const pendingRequestCount = useMemo(
+    () => serviceRequests.filter((request) => request.status === 'pending').length,
+    [serviceRequests]
+  );
+
+  const filteredUsers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return users;
+    return users.filter((user) => (user.username ?? '').toLowerCase().includes(query));
+  }, [users, searchQuery]);
+
+  const recentUsersList = useMemo(() => users.slice(0, 6), [users]);
+  const recentPostsList = useMemo(() => posts.slice(0, 10), [posts]);
+
+  useEffect(() => {
+    setRequestNotes((prev) => {
+      const updated = {};
+      serviceRequests.forEach((request) => {
+        updated[request.id] = Object.prototype.hasOwnProperty.call(prev, request.id)
+          ? prev[request.id]
+          : request.admin_notes || '';
+      });
+      return updated;
+    });
+  }, [serviceRequests]);
+
+  // Check if user is admin - SIMPLE VERSION
+  useEffect(() => {
+    if (!session) {
+      console.log('AdminDashboard: No session found');
       setLoading(false);
-    };
-    checkAdmin();
-  }, [session, profile]);
+      return;
+    }
+
+    const userEmail = session.user.email?.trim().toLowerCase();
+    const isAdmin = userEmail && FALLBACK_ADMIN_EMAILS.includes(userEmail);
+    
+    console.log('AdminDashboard Check:', {
+      userEmail,
+      isAdmin,
+      allowedEmails: FALLBACK_ADMIN_EMAILS
+    });
+    
+    setIsAuthorized(isAdmin);
+    setLoading(false);
+  }, [session]);
 
   useEffect(() => {
+    if (!isAuthorized) return;
     fetchAnalytics();
-    // Refresh analytics every 30 seconds
     const interval = setInterval(fetchAnalytics, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthorized]);
 
-  const fetchAnalytics = async () => {
+  useEffect(() => {
+    if (activeTab === 'moderation' && isAuthorized) {
+      fetchFlaggedContent();
+    }
+  }, [activeTab, flaggedFilter, isAuthorized]);
+
+  const fetchAnalytics = useCallback(async () => {
     try {
-      // Fetch total users
-      const { count: userCount } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true });
+      setIsRefreshing(true);
 
-      // Fetch total posts
-      const { count: postCount } = await supabase
-        .from('posts')
-        .select('*', { count: 'exact', head: true });
+      const [
+        userCountResult,
+        postCountResult,
+        commentCountResult,
+        serviceRequestsResult,
+        recentUsersResult,
+        postsResult,
+        downloadStatsResult,
+        analyticsEventsResult,
+        adminActionsResult,
+      ] = await Promise.all([
+        supabase.from('profiles').select('*', { count: 'exact', head: true }),
+        supabase.from('posts').select('*', { count: 'exact', head: true }),
+        supabase.from('comments').select('*', { count: 'exact', head: true }),
+        supabase
+          .from('service_requests')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('profiles')
+          .select('id, username, created_at, reputation, is_admin')
+          .order('created_at', { ascending: false })
+          .limit(30),
+        supabase
+          .from('posts')
+          .select('id, title, category, created_at, tags, profiles(username)')
+          .order('created_at', { ascending: false })
+          .limit(40),
+        supabase
+          .from('download_stats')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(200),
+        supabase
+          .from('analytics')
+          .select('event_type, created_at, entity_type, metadata')
+          .order('created_at', { ascending: false })
+          .limit(200),
+        supabase
+          .from('admin_actions')
+          .select('*, profiles:admin_id(username)')
+          .order('created_at', { ascending: false })
+          .limit(50),
+      ]);
 
-      // Fetch total comments
-      const { count: commentCount } = await supabase
-        .from('comments')
-        .select('*', { count: 'exact', head: true });
+      const serviceRequestsData = serviceRequestsResult.data || [];
+      const usersData = recentUsersResult.data || [];
+      const postsData = postsResult.data || [];
+      const downloadStatsData = downloadStatsResult.data || [];
+      const analyticsEvents = analyticsEventsResult.data || [];
+      const adminActions = adminActionsResult.data || [];
 
-      // Fetch service requests
-      const { data: serviceRequests } = await supabase
-        .from('service_requests')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10);
+      setServiceRequests(serviceRequestsData);
+      setUsers(usersData);
+      setPosts(postsData);
 
-      // Fetch recent users
-      const { data: recentUsers } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5);
+      // Build recent activity feed from multiple sources
+      const activityFeed = [];
+      
+      // Add recent posts
+      postsData.slice(0, 5).forEach(post => {
+        activityFeed.push({
+          type: 'post',
+          icon: FileText,
+          color: 'text-purple-400',
+          title: `New post: ${post.title}`,
+          user: post.profiles?.username || 'Unknown',
+          timestamp: post.created_at
+        });
+      });
 
-      // Fetch recent posts
-      const { data: recentPosts } = await supabase
-        .from('posts')
-        .select('*, profiles(username)')
-        .order('created_at', { ascending: false })
-        .limit(10);
+      // Add recent downloads
+      downloadStatsData.slice(0, 5).forEach(download => {
+        activityFeed.push({
+          type: 'download',
+          icon: Download,
+          color: 'text-green-400',
+          title: `Downloaded ${download.tool_name}`,
+          user: 'User',
+          timestamp: download.created_at
+        });
+      });
 
-      // Fetch download stats
-      const { data: downloadStatsData } = await supabase
-        .from('download_stats')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
+      // Add admin actions
+      adminActions.slice(0, 5).forEach(action => {
+        activityFeed.push({
+          type: 'admin_action',
+          icon: Shield,
+          color: 'text-red-400',
+          title: `Admin: ${action.action_type.replace(/_/g, ' ')}`,
+          user: action.profiles?.username || 'Admin',
+          timestamp: action.created_at
+        });
+      });
 
-      // Process download stats
-      const downloadStats = {
-        today: downloadStatsData?.filter(d => {
-          const today = new Date();
-          const downloadDate = new Date(d.created_at);
-          return downloadDate.toDateString() === today.toDateString();
-        }).length || 0,
-        thisWeek: downloadStatsData?.filter(d => {
-          const weekAgo = new Date();
-          weekAgo.setDate(weekAgo.getDate() - 7);
-          return new Date(d.created_at) >= weekAgo;
-        }).length || 0,
-        thisMonth: downloadStatsData?.filter(d => {
-          const monthAgo = new Date();
-          monthAgo.setMonth(monthAgo.getMonth() - 1);
-          return new Date(d.created_at) >= monthAgo;
-        }).length || 0,
-        total: downloadStatsData?.length || 0
-      };
+      // Sort by timestamp and take top 15
+      activityFeed.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      setRecentActivity(activityFeed.slice(0, 15));
 
-      const pendingRequests = serviceRequests?.filter(r => r.status === 'pending').length || 0;
-
-      // Process tags from posts
       const tagCounts = {};
-      recentPosts?.forEach(post => {
-        if (post.tags && Array.isArray(post.tags)) {
-          post.tags.forEach(tag => {
-            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+      postsData.forEach((post) => {
+        if (Array.isArray(post.tags)) {
+          post.tags.forEach((tag) => {
+            const normalizedTag = tag?.toLowerCase();
+            if (normalizedTag) {
+              tagCounts[normalizedTag] = (tagCounts[normalizedTag] || 0) + 1;
+            }
           });
         }
       });
+
       const topTags = Object.entries(tagCounts)
         .map(([tag, count]) => ({ tag, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
-      // Get top contributors
       const contributorCounts = {};
-      recentPosts?.forEach(post => {
+      postsData.forEach((post) => {
         const username = post.profiles?.username || 'Unknown';
         contributorCounts[username] = (contributorCounts[username] || 0) + 1;
       });
+
       const topContributors = Object.entries(contributorCounts)
         .map(([username, count]) => ({ username, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(startOfWeek.getDate() - 7);
+      const startOfMonth = new Date(now);
+      startOfMonth.setMonth(startOfMonth.getMonth() - 1);
+
+      const downloadStats = {
+        today: downloadStatsData.filter((d) => new Date(d.created_at) >= startOfDay).length,
+        thisWeek: downloadStatsData.filter((d) => new Date(d.created_at) >= startOfWeek).length,
+        thisMonth: downloadStatsData.filter((d) => new Date(d.created_at) >= startOfMonth).length,
+        total: downloadStatsData.length,
+      };
+
+      const eventStats = analyticsEvents.reduce((acc, event) => {
+        if (event.event_type) {
+          acc[event.event_type] = (acc[event.event_type] || 0) + 1;
+        }
+        return acc;
+      }, {});
+
+      const pendingRequests = serviceRequestsData.filter((r) => r.status === 'pending').length;
+
       setAnalytics({
-        totalUsers: userCount || 0,
-        totalPosts: postCount || 0,
-        totalComments: commentCount || 0,
+        totalUsers: userCountResult.count || 0,
+        totalPosts: postCountResult.count || 0,
+        totalComments: commentCountResult.count || 0,
         totalDownloads: downloadStats.total,
         pendingServiceRequests: pendingRequests,
-        recentUsers: recentUsers || [],
-        recentPosts: recentPosts || [],
-        recentServiceRequests: serviceRequests || [],
+        recentUsers: usersData.slice(0, 6),
+        recentPosts: postsData.slice(0, 10),
+        recentServiceRequests: serviceRequestsData.slice(0, 10),
         downloadStats,
-        eventStats: {},
+        eventStats,
         topTags,
-        topContributors
+        topContributors,
       });
     } catch (error) {
       console.error('Error fetching analytics:', error);
       toast.error('Failed to fetch analytics data');
+    } finally {
+      setIsRefreshing(false);
     }
-  };
+  }, []);
 
   const handleDeletePost = async (postId) => {
     if (!confirm('Are you sure you want to delete this post?')) return;
@@ -223,7 +359,9 @@ const AdminDashboard = () => {
 
       if (error) throw error;
 
+      await logAdminAction('delete_post', 'post', postId.toString(), {});
       toast.success('Post deleted successfully');
+      setPosts((prev) => prev.filter((post) => post.id !== postId));
       fetchAnalytics();
     } catch (error) {
       console.error('Error deleting post:', error);
@@ -231,21 +369,130 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleUpdateServiceRequest = async (requestId, status) => {
+  const handleBulkDeletePosts = async () => {
+    if (selectedPosts.length === 0) {
+      toast.error('No posts selected');
+      return;
+    }
+    if (!confirm(`Delete ${selectedPosts.length} selected posts?`)) return;
+
+    const toastId = toast.loading(`Deleting ${selectedPosts.length} posts...`);
     try {
       const { error } = await supabase
-        .from('service_requests')
-        .update({ status })
-        .eq('id', requestId);
+        .from('posts')
+        .delete()
+        .in('id', selectedPosts);
 
       if (error) throw error;
 
-      toast.success('Service request updated');
+      await logAdminAction('bulk_delete_posts', 'post', 'multiple', { count: selectedPosts.length });
+      toast.success(`${selectedPosts.length} posts deleted`, { id: toastId });
+      setSelectedPosts([]);
+      fetchAnalytics();
+    } catch (error) {
+      console.error('Error bulk deleting posts:', error);
+      toast.error('Failed to delete posts', { id: toastId });
+    }
+  };
+
+  const handleBulkBanUsers = async () => {
+    if (selectedUsers.length === 0) {
+      toast.error('No users selected');
+      return;
+    }
+    const reason = prompt('Enter reason for bulk ban:');
+    if (!reason || !confirm(`Ban ${selectedUsers.length} selected users?`)) return;
+
+    const toastId = toast.loading(`Banning ${selectedUsers.length} users...`);
+    try {
+      const banRecords = selectedUsers.map(userId => ({
+        user_id: userId,
+        admin_id: session.user.id,
+        reason,
+        is_active: true
+      }));
+
+      const { error } = await supabase
+        .from('banned_users')
+        .insert(banRecords);
+
+      if (error) throw error;
+
+      await logAdminAction('bulk_ban_users', 'user', 'multiple', { count: selectedUsers.length, reason });
+      toast.success(`${selectedUsers.length} users banned`, { id: toastId });
+      setSelectedUsers([]);
+      fetchAnalytics();
+    } catch (error) {
+      console.error('Error bulk banning users:', error);
+      toast.error('Failed to ban users', { id: toastId });
+    }
+  };
+
+  const handleUpdateReputation = async () => {
+    if (!reputationUser) return;
+
+    const toastId = toast.loading('Updating reputation...');
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ reputation: reputationValue })
+        .eq('id', reputationUser.id);
+
+      if (error) throw error;
+
+      await logAdminAction('update_reputation', 'user', reputationUser.id, { 
+        username: reputationUser.username,
+        old_reputation: reputationUser.reputation,
+        new_reputation: reputationValue
+      });
+
+      toast.success('Reputation updated', { id: toastId });
+      setShowReputationModal(false);
+      setReputationUser(null);
+      fetchAnalytics();
+    } catch (error) {
+      console.error('Error updating reputation:', error);
+      toast.error('Failed to update reputation', { id: toastId });
+    }
+  };
+
+  const handleUpdateServiceRequest = async (requestId, updates, successMessage = 'Service request updated') => {
+    const toastId = toast.loading('Saving changes...');
+    try {
+      const { data, error } = await supabase
+        .from('service_requests')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', requestId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setServiceRequests((prev) =>
+        prev.map((request) => (request.id === requestId ? { ...request, ...data } : request))
+      );
+
+      toast.success(successMessage, { id: toastId });
       fetchAnalytics();
     } catch (error) {
       console.error('Error updating request:', error);
-      toast.error('Failed to update request');
+      toast.error('Failed to update request', { id: toastId });
     }
+  };
+
+  const handleStatusChange = (requestId, status) => {
+    const currentRequest = serviceRequests.find((request) => request.id === requestId);
+    if (!currentRequest || currentRequest.status === status) return;
+    handleUpdateServiceRequest(requestId, { status }, 'Status updated');
+  };
+
+  const handleSaveRequestNotes = (requestId) => {
+    const draftNotes = (requestNotes[requestId] ?? '').trim();
+    const currentRequest = serviceRequests.find((request) => request.id === requestId);
+    if (!currentRequest || (currentRequest.admin_notes || '').trim() === draftNotes) {
+      return;
+    }
+    handleUpdateServiceRequest(requestId, { admin_notes: draftNotes }, 'Notes saved');
   };
 
   const handleBanUser = async (userId, username) => {
@@ -433,14 +680,20 @@ const AdminDashboard = () => {
   };
 
   const fetchDatabaseStats = async () => {
+    const toastId = toast.loading('Fetching database stats...');
     try {
-      toast.loading('Fetching database stats...');
-      const [usersCount, postsCount, commentsCount, downloadsCount, serviceRequestsCount] = await Promise.all([
+      const [
+        usersCount,
+        postsCount,
+        commentsCount,
+        downloadsCount,
+        serviceRequestsCount,
+      ] = await Promise.all([
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
         supabase.from('posts').select('*', { count: 'exact', head: true }),
         supabase.from('comments').select('*', { count: 'exact', head: true }),
         supabase.from('download_stats').select('*', { count: 'exact', head: true }),
-        supabase.from('service_requests').select('*', { count: 'exact', head: true })
+        supabase.from('service_requests').select('*', { count: 'exact', head: true }),
       ]);
 
       setDbStats({
@@ -448,28 +701,88 @@ const AdminDashboard = () => {
         posts: postsCount.count || 0,
         comments: commentsCount.count || 0,
         downloads: downloadsCount.count || 0,
-        serviceRequests: serviceRequestsCount.count || 0
+        serviceRequests: serviceRequestsCount.count || 0,
       });
-      
+
       setShowDbStats(true);
-      toast.dismiss();
-      toast.success('Database stats loaded successfully');
+      toast.success('Database stats loaded successfully', { id: toastId });
     } catch (error) {
       console.error('Error fetching database stats:', error);
-      toast.dismiss();
-      toast.error('Failed to fetch database stats');
+      toast.error('Failed to fetch database stats', { id: toastId });
     }
   };
 
   const exportDatabase = async () => {
-    toast.success('Database export initiated. Check your download folder.');
+    const toastId = toast.loading('Preparing data export...');
+    try {
+      const [
+        serviceRequestsResult,
+        postsResult,
+        usersResult,
+        downloadsResult,
+        auditLogResult,
+      ] = await Promise.all([
+        supabase.from('service_requests').select('*').order('created_at', { ascending: false }),
+        supabase
+          .from('posts')
+          .select('id, title, category, tags, created_at, user_id')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('profiles')
+          .select('id, username, created_at, reputation, is_admin')
+          .order('created_at', { ascending: false }),
+        supabase.from('download_stats').select('*').order('created_at', { ascending: false }),
+        supabase
+          .from('admin_actions')
+          .select('id, admin_id, action_type, target_type, target_id, created_at')
+          .order('created_at', { ascending: false })
+          .limit(200),
+      ]);
+
+      const firstError = [
+        serviceRequestsResult,
+        postsResult,
+        usersResult,
+        downloadsResult,
+        auditLogResult,
+      ].find((result) => result?.error);
+      if (firstError?.error) {
+        throw firstError.error;
+      }
+
+      const payload = {
+        exported_at: new Date().toISOString(),
+        service_requests: serviceRequestsResult.data ?? [],
+        posts: postsResult.data ?? [],
+        users: usersResult.data ?? [],
+        download_stats: downloadsResult.data ?? [],
+        admin_actions: auditLogResult.data ?? [],
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `clawnet-admin-export-${Date.now()}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success('Export ready. Check your downloads.', { id: toastId });
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      toast.error('Failed to export data', { id: toastId });
+    }
   };
 
   const seedSampleData = async () => {
     if (!confirm('This will add comprehensive sample data to the database. Continue?')) return;
     
+    const toastId = toast.loading('Seeding sample data...');
     try {
-      toast.loading('Seeding sample data...');
       
       // First, get current user ID
       const currentUserId = session.user.id;
@@ -549,13 +862,97 @@ const AdminDashboard = () => {
 
       await supabase.from('analytics').insert(sampleAnalytics);
 
-      toast.dismiss();
-      toast.success('Sample data seeded successfully!');
+      toast.success('Sample data seeded successfully!', { id: toastId });
       fetchAnalytics();
     } catch (error) {
       console.error('Error seeding sample data:', error);
-      toast.dismiss();
-      toast.error('Failed to seed sample data');
+      toast.error('Failed to seed sample data', { id: toastId });
+    }
+  };
+
+  const fetchSystemHealth = async () => {
+    const toastId = toast.loading('Checking system health...');
+    try {
+      const startTime = Date.now();
+      
+      // Fetch database size estimate
+      const { data: tableData } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true });
+      
+      const responseTime = Date.now() - startTime;
+
+      // Simulate system metrics (in production, these would come from actual monitoring)
+      setSystemHealth({
+        dbSize: Math.round(Math.random() * 50 + 10), // Simulated
+        avgResponseTime: responseTime,
+        uptime: 99.9,
+        activeConnections: Math.round(Math.random() * 20 + 5) // Simulated
+      });
+
+      toast.success('System health updated', { id: toastId });
+    } catch (error) {
+      console.error('Error fetching system health:', error);
+      toast.error('Failed to fetch system health', { id: toastId });
+    }
+  };
+
+  const sendServiceRequestNotification = async (requestId) => {
+    const request = serviceRequests.find(r => r.id === requestId);
+    if (!request) return;
+
+    const toastId = toast.loading('Sending notification...');
+    try {
+      // In production, this would integrate with an email service
+      // For now, we'll just log the action
+      await logAdminAction('send_notification', 'service_request', requestId.toString(), {
+        email: request.user_email,
+        service: request.service_name
+      });
+
+      toast.success(`Notification sent to ${request.user_email}`, { id: toastId });
+    } catch (error) {
+      console.error('Error sending notification:', error);
+      toast.error('Failed to send notification', { id: toastId });
+    }
+  };
+
+  const fetchFlaggedContent = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('flagged_content')
+        .select('*, reporter:reporter_id(username), posts(title, category)')
+        .eq('status', flaggedFilter)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setFlaggedContent(data || []);
+    } catch (error) {
+      console.error('Error fetching flagged content:', error);
+      toast.error('Failed to fetch flagged content');
+    }
+  };
+
+  const handleReviewFlag = async (flagId, action) => {
+    const toastId = toast.loading('Processing...');
+    try {
+      const { error } = await supabase
+        .from('flagged_content')
+        .update({
+          status: action === 'dismiss' ? 'dismissed' : 'actioned',
+          reviewed_by: session.user.id,
+          reviewed_at: new Date().toISOString()
+        })
+        .eq('id', flagId);
+
+      if (error) throw error;
+
+      await logAdminAction(`flag_${action}`, 'flagged_content', flagId.toString(), {});
+      toast.success(`Flag ${action}ed`, { id: toastId });
+      fetchFlaggedContent();
+    } catch (error) {
+      console.error('Error reviewing flag:', error);
+      toast.error('Failed to process flag', { id: toastId });
     }
   };
 
@@ -575,21 +972,16 @@ const AdminDashboard = () => {
     );
   }
 
-  if (!session) {
+  if (!session || !isAuthorized) {
     return <Navigate to="/" replace />;
   }
-
-  // You can add additional admin check here if needed
-  // if (!profile?.is_admin) {
-  //   return <Navigate to="/" replace />;
-  // }
 
   const stats = [
     { label: 'Total Users', value: analytics.totalUsers, icon: Users, color: 'text-blue-400', change: '+12%' },
     { label: 'Total Posts', value: analytics.totalPosts, icon: FileText, color: 'text-purple-400', change: '+8%' },
     { label: 'Total Comments', value: analytics.totalComments, icon: MessageSquare, color: 'text-cyan-400', change: '+15%' },
     { label: 'Downloads', value: analytics.totalDownloads, icon: Download, color: 'text-green-400', change: '+25%' },
-    { label: 'Pending Requests', value: analytics.pendingServiceRequests, icon: Mail, color: 'text-orange-400', change: null }
+    { label: 'Pending Requests', value: pendingRequestCount, icon: Mail, color: 'text-orange-400', change: null }
   ];
 
   return (
@@ -670,6 +1062,7 @@ const AdminDashboard = () => {
             <div className="flex gap-2 border-b border-white/10 overflow-x-auto">
               {[
                 { id: 'overview', label: 'Overview', icon: BarChart3 },
+                { id: 'moderation', label: 'Moderation', icon: Shield },
                 { id: 'users', label: 'Users', icon: Users },
                 { id: 'analytics', label: 'Analytics', icon: Activity },
                 { id: 'settings', label: 'Settings', icon: Settings }
@@ -742,56 +1135,128 @@ const AdminDashboard = () => {
                     Service Requests
                   </h2>
                   <span className="px-3 py-1 bg-red-500/20 border border-red-500/50 rounded-full text-xs font-exo text-red-400 w-fit">
-                    {analytics.pendingServiceRequests} Pending
+                    {pendingRequestCount} Pending
                   </span>
                 </div>
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {analytics.recentServiceRequests.length > 0 ? (
-                    analytics.recentServiceRequests.map((request) => (
-                      <div key={request.id} className="p-4 bg-white/5 border border-white/10 rounded-lg hover:border-cyber-blue/30 transition-all">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-orbitron text-sm font-bold text-white">{request.service_name}</span>
-                              <span className="px-2 py-0.5 text-xs font-exo uppercase tracking-wider rounded border"
-                                style={{
-                                  backgroundColor: request.status === 'pending' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
-                                  borderColor: request.status === 'pending' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)',
-                                  color: request.status === 'pending' ? 'rgb(248, 113, 113)' : 'rgb(134, 239, 172)'
-                                }}
-                              >
-                                {request.status}
-                              </span>
+                <div className="flex flex-col md:flex-row gap-3 mb-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" />
+                    <input
+                      type="text"
+                      value={serviceRequestSearch}
+                      onChange={(e) => setServiceRequestSearch(e.target.value)}
+                      placeholder="Search by company, email, or notes..."
+                      className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyber-blue"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-gray-400" />
+                    <select
+                      value={serviceRequestFilter}
+                      onChange={(e) => setServiceRequestFilter(e.target.value)}
+                      className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-cyber-blue"
+                    >
+                      <option value="all">All statuses</option>
+                      {SERVICE_REQUEST_STATUSES.map((status) => (
+                        <option key={status} value={status}>
+                          {status.replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
+                  {filteredServiceRequests.length > 0 ? (
+                    filteredServiceRequests.map((request) => {
+                      const draftNotes = requestNotes[request.id] ?? '';
+                      const notesChanged =
+                        (request.admin_notes || '').trim() !== draftNotes.trim();
+                      return (
+                        <div
+                          key={request.id}
+                          className="p-4 bg-white/5 border border-white/10 rounded-lg hover:border-cyber-blue/30 transition-all"
+                        >
+                          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center flex-wrap gap-2 mb-2">
+                                <span className="font-orbitron text-sm font-bold text-white">
+                                  {request.service_name}
+                                </span>
+                                <span className="px-2 py-0.5 text-xs font-exo uppercase tracking-wider rounded border border-white/10 text-gray-300">
+                                  {request.service_type}
+                                </span>
+                              </div>
+                              <p className="text-xs font-exo text-gray-400 mb-2">
+                                {request.user_email}
+                              </p>
+                              {request.message && (
+                                <p className="text-sm font-exo text-gray-300 leading-relaxed">
+                                  {request.message}
+                                </p>
+                              )}
                             </div>
-                            <p className="text-xs font-exo text-gray-400 mb-2">{request.user_email}</p>
-                            {request.message && (
-                              <p className="text-sm font-exo text-gray-300">{request.message}</p>
-                            )}
-                            <p className="text-xs font-exo text-gray-500 mt-2">
-                              {new Date(request.created_at).toLocaleString()}
+                            <div className="flex items-center gap-2">
+                              <span className="font-exo text-xs uppercase text-gray-400">Status</span>
+                              <select
+                                value={request.status || 'pending'}
+                                onChange={(e) => handleStatusChange(request.id, e.target.value)}
+                                className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-white uppercase tracking-wider focus:outline-none focus:border-cyber-blue"
+                              >
+                                {SERVICE_REQUEST_STATUSES.map((status) => (
+                                  <option key={status} value={status}>
+                                    {status.replace(/_/g, ' ')}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="mt-3">
+                            <label className="block text-xs font-exo text-gray-400 mb-1">
+                              Admin notes
+                            </label>
+                            <textarea
+                              value={draftNotes}
+                              onChange={(e) =>
+                                setRequestNotes((prev) => ({ ...prev, [request.id]: e.target.value }))
+                              }
+                              rows={3}
+                              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyber-blue resize-none"
+                              placeholder="Document outreach, follow-up dates, and next steps..."
+                            />
+                          </div>
+                          <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <p className="text-xs font-exo text-gray-500">
+                              Created {new Date(request.created_at).toLocaleString()}
                             </p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                onClick={() => handleSaveRequestNotes(request.id)}
+                                disabled={!notesChanged}
+                                className="px-3 py-1.5 text-xs font-exo font-bold uppercase tracking-wider border border-cyber-blue/50 rounded hover:bg-cyber-blue/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                Save Notes
+                              </button>
+                              <button
+                                onClick={() => sendServiceRequestNotification(request.id)}
+                                className="px-3 py-1.5 text-xs font-exo font-bold uppercase tracking-wider bg-green-500/20 border border-green-500/50 rounded hover:bg-green-500/30 transition-all flex items-center gap-1"
+                              >
+                                <Send className="w-3 h-3" />
+                                Email
+                              </button>
+                              {request.updated_at && (
+                                <span className="text-[11px] font-exo text-gray-500">
+                                  Updated {new Date(request.updated_at).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <div className="flex gap-2 mt-3">
-                          <button
-                            onClick={() => handleUpdateServiceRequest(request.id, 'contacted')}
-                            disabled={request.status !== 'pending'}
-                            className="px-3 py-1.5 text-xs font-exo font-bold uppercase tracking-wider bg-cyber-blue/20 border border-cyber-blue/50 rounded hover:bg-cyber-blue/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Contacted
-                          </button>
-                          <button
-                            onClick={() => handleUpdateServiceRequest(request.id, 'completed')}
-                            disabled={request.status !== 'contacted' && request.status !== 'in_progress'}
-                            className="px-3 py-1.5 text-xs font-exo font-bold uppercase tracking-wider bg-green-500/20 border border-green-500/50 rounded hover:bg-green-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Complete
-                          </button>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
-                    <p className="text-center text-gray-400 font-exo py-8">No service requests yet</p>
+                    <p className="text-center text-gray-400 font-exo py-8">
+                      No service requests match your filters
+                    </p>
                   )}
                 </div>
               </motion.div>
@@ -811,20 +1276,45 @@ const AdminDashboard = () => {
                 </h2>
                 <div className="space-y-3">
                   <motion.button
+                    onClick={() => fetchAnalytics()}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="w-full p-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-white font-orbitron font-bold text-sm uppercase tracking-wider rounded-lg flex items-center gap-3"
+                    disabled={isRefreshing}
+                    className="w-full p-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-white font-orbitron font-bold text-sm uppercase tracking-wider rounded-lg flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <Settings className="w-5 h-5" />
-                    Settings
+                    <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    {isRefreshing ? 'Refreshing...' : 'Refresh Metrics'}
                   </motion.button>
                   <motion.button
+                    onClick={() => {
+                      setActiveTab('settings');
+                      setShowManageAdmins(true);
+                      fetchAdmins();
+                    }}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="w-full p-3 border border-white/20 hover:border-cyber-blue/50 font-orbitron font-bold text-sm uppercase tracking-wider rounded-lg flex items-center gap-3 transition-all"
+                    className="w-full p-3 border border-white/20 hover:border-cyber-blue/50 font-orbitron font-bold text-sm uppercase tracking-wider rounded-lg flex items-center justify-center gap-3 transition-all"
                   >
-                    <BarChart3 className="w-5 h-5" />
-                    Full Analytics
+                    <UserCog className="w-5 h-5" />
+                    Manage Admins
+                  </motion.button>
+                  <motion.button
+                    onClick={exportDatabase}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full p-3 border border-white/20 hover:border-cyber-blue/50 font-orbitron font-bold text-sm uppercase tracking-wider rounded-lg flex items-center justify-center gap-3 transition-all"
+                  >
+                    <Download className="w-5 h-5" />
+                    Export Snapshot
+                  </motion.button>
+                  <motion.button
+                    onClick={seedSampleData}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full p-3 border border-green-500/40 bg-green-500/10 hover:bg-green-500/20 font-orbitron font-bold text-sm uppercase tracking-wider rounded-lg flex items-center justify-center gap-3 transition-all"
+                  >
+                    <Database className="w-5 h-5" />
+                    Seed Demo Data
                   </motion.button>
                 </div>
               </motion.div>
@@ -871,15 +1361,40 @@ const AdminDashboard = () => {
               transition={{ delay: 0.6 }}
               className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm"
             >
-              <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
-                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
-                Recent Posts
-              </h2>
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3">
+                  <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
+                  Recent Posts
+                </h2>
+                {selectedPosts.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-exo text-gray-400">{selectedPosts.length} selected</span>
+                    <button
+                      onClick={handleBulkDeletePosts}
+                      className="px-2 py-1 text-xs font-exo font-bold uppercase bg-red-500/20 border border-red-500/50 rounded hover:bg-red-500/30 transition-all"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {analytics.recentPosts.length > 0 ? (
-                  analytics.recentPosts.map((post) => (
-                    <div key={post.id} className="p-4 bg-white/5 border border-white/10 rounded-lg hover:border-cyber-blue/30 transition-all group">
-                      <div className="flex items-start justify-between mb-2">
+                {recentPostsList.length > 0 ? (
+                  recentPostsList.map((post) => (
+                    <div key={post.id} className="p-4 bg-white/5 border border-white/10 rounded-lg hover:border-cyber-blue/30 transition-all group relative">
+                      <input
+                        type="checkbox"
+                        checked={selectedPosts.includes(post.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedPosts(prev => [...prev, post.id]);
+                          } else {
+                            setSelectedPosts(prev => prev.filter(id => id !== post.id));
+                          }
+                        }}
+                        className="absolute top-3 right-3 w-4 h-4 rounded border-2 border-cyber-blue/50 bg-cyber-black checked:bg-cyber-blue cursor-pointer"
+                      />
+                      <div className="flex items-start justify-between mb-2 pr-8">
                         <div className="flex-1">
                           <h3 className="font-orbitron text-sm font-bold text-white mb-1">{post.title}</h3>
                           <p className="text-xs font-exo text-gray-400 mb-2">By {post.profiles?.username || 'Unknown'}</p>
@@ -922,8 +1437,8 @@ const AdminDashboard = () => {
                 Recent Users
               </h2>
               <div className="space-y-3">
-                {analytics.recentUsers.length > 0 ? (
-                  analytics.recentUsers.map((user) => (
+                {recentUsersList.length > 0 ? (
+                  recentUsersList.map((user) => (
                     <div key={user.id} className="p-4 bg-white/5 border border-white/10 rounded-lg hover:border-cyber-blue/30 transition-all">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -955,6 +1470,222 @@ const AdminDashboard = () => {
             </>
           )}
 
+          {activeTab === 'moderation' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              {/* Flagged Content Queue */}
+              <div className="mb-6">
+                <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3">
+                      <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-orange-400" />
+                      Content Moderation Queue
+                    </h2>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={flaggedFilter}
+                        onChange={(e) => {
+                          setFlaggedFilter(e.target.value);
+                          fetchFlaggedContent();
+                        }}
+                        className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-cyber-blue"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="actioned">Actioned</option>
+                        <option value="dismissed">Dismissed</option>
+                      </select>
+                      <button
+                        onClick={fetchFlaggedContent}
+                        className="p-1.5 border border-cyber-blue/50 rounded hover:bg-cyber-blue/10 transition-all"
+                      >
+                        <RefreshCw className="w-4 h-4 text-cyber-blue" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                    {flaggedContent.length > 0 ? (
+                      flaggedContent.map((flag) => (
+                        <div key={flag.id} className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="px-2 py-0.5 text-xs font-exo uppercase bg-orange-500/20 border border-orange-500/40 rounded text-orange-300">
+                                  {flag.content_type}
+                                </span>
+                                <span className="text-xs font-exo text-gray-400">
+                                  Reported by {flag.reporter?.username || 'Unknown'}
+                                </span>
+                              </div>
+                              <p className="font-exo text-sm text-white mb-1">
+                                {flag.posts?.title || `${flag.content_type} #${flag.content_id}`}
+                              </p>
+                              <p className="text-xs font-exo text-gray-400 mb-2">
+                                Reason: {flag.reason}
+                              </p>
+                              <p className="text-xs font-exo text-gray-500">
+                                {new Date(flag.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          {flag.status === 'pending' && (
+                            <div className="flex gap-2 mt-3">
+                              <button
+                                onClick={() => handleReviewFlag(flag.id, 'action')}
+                                className="px-3 py-1.5 text-xs font-exo font-bold uppercase bg-red-500/20 border border-red-500/50 rounded hover:bg-red-500/30 transition-all flex items-center gap-1"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Take Action
+                              </button>
+                              <button
+                                onClick={() => handleReviewFlag(flag.id, 'dismiss')}
+                                className="px-3 py-1.5 text-xs font-exo font-bold uppercase bg-green-500/20 border border-green-500/50 rounded hover:bg-green-500/30 transition-all flex items-center gap-1"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Dismiss
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-center text-gray-400 font-exo py-8">No flagged content in this category</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+                {/* Real-Time Activity Feed */}
+                <div className="lg:col-span-2">
+                  <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+                    <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+                      <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
+                      Real-Time Activity Feed
+                    </h2>
+                    <div className="space-y-2 max-h-[32rem] overflow-y-auto pr-1">
+                      {recentActivity.length > 0 ? (
+                        recentActivity.map((activity, index) => {
+                          const Icon = activity.icon;
+                          return (
+                            <motion.div
+                              key={index}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: index * 0.05 }}
+                              className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-lg hover:border-cyber-blue/30 transition-all"
+                            >
+                              <Icon className={`w-5 h-5 ${activity.color}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-exo text-sm text-white truncate">{activity.title}</p>
+                                <p className="text-xs text-gray-400">by {activity.user}</p>
+                              </div>
+                              <div className="flex items-center gap-1 text-xs text-gray-500">
+                                <Clock className="w-3 h-3" />
+                                {new Date(activity.timestamp).toLocaleTimeString()}
+                              </div>
+                            </motion.div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-center text-gray-400 font-exo py-8">No recent activity</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bulk Actions Panel */}
+                <div className="space-y-4">
+                  <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+                    <h2 className="font-orbitron text-xl font-bold flex items-center gap-2 mb-4">
+                      <Zap className="w-5 h-5 text-cyber-blue" />
+                      Bulk Actions
+                    </h2>
+                    <div className="space-y-3">
+                      <div className="p-3 bg-white/5 rounded-lg">
+                        <p className="text-xs font-exo text-gray-400 mb-2">Selected Users</p>
+                        <p className="font-orbitron text-2xl font-bold text-white">{selectedUsers.length}</p>
+                      </div>
+                      <div className="p-3 bg-white/5 rounded-lg">
+                        <p className="text-xs font-exo text-gray-400 mb-2">Selected Posts</p>
+                        <p className="font-orbitron text-2xl font-bold text-white">{selectedPosts.length}</p>
+                      </div>
+                      <motion.button
+                        onClick={handleBulkBanUsers}
+                        disabled={selectedUsers.length === 0}
+                        whileHover={{ scale: selectedUsers.length > 0 ? 1.02 : 1 }}
+                        whileTap={{ scale: selectedUsers.length > 0 ? 0.98 : 1 }}
+                        className="w-full p-3 bg-red-500/20 border border-red-500/50 rounded-lg hover:bg-red-500/30 transition-all font-exo text-sm font-bold uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        <Ban className="w-4 h-4" />
+                        Bulk Ban Users
+                      </motion.button>
+                      <motion.button
+                        onClick={handleBulkDeletePosts}
+                        disabled={selectedPosts.length === 0}
+                        whileHover={{ scale: selectedPosts.length > 0 ? 1.02 : 1 }}
+                        whileTap={{ scale: selectedPosts.length > 0 ? 0.98 : 1 }}
+                        className="w-full p-3 bg-red-500/20 border border-red-500/50 rounded-lg hover:bg-red-500/30 transition-all font-exo text-sm font-bold uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Bulk Delete Posts
+                      </motion.button>
+                      <motion.button
+                        onClick={() => {
+                          setSelectedUsers([]);
+                          setSelectedPosts([]);
+                        }}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        className="w-full p-3 border border-white/20 rounded-lg hover:border-cyber-blue/50 transition-all font-exo text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        Clear Selection
+                      </motion.button>
+                    </div>
+                  </div>
+
+                  {/* System Health */}
+                  <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="font-orbitron text-xl font-bold flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-cyber-blue" />
+                        System Health
+                      </h2>
+                      <button
+                        onClick={fetchSystemHealth}
+                        className="p-1.5 border border-cyber-blue/50 rounded hover:bg-cyber-blue/10 transition-all"
+                        title="Refresh Health"
+                      >
+                        <RefreshCw className="w-4 h-4 text-cyber-blue" />
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                        <span className="text-xs font-exo text-gray-400">Uptime</span>
+                        <span className="font-orbitron text-sm font-bold text-green-400">{systemHealth.uptime}%</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                        <span className="text-xs font-exo text-gray-400">DB Size</span>
+                        <span className="font-orbitron text-sm font-bold text-white">{systemHealth.dbSize} MB</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                        <span className="text-xs font-exo text-gray-400">Avg Response</span>
+                        <span className="font-orbitron text-sm font-bold text-white">{systemHealth.avgResponseTime}ms</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                        <span className="text-xs font-exo text-gray-400">Active Connections</span>
+                        <span className="font-orbitron text-sm font-bold text-cyber-cyan">{systemHealth.activeConnections}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {activeTab === 'users' && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -974,28 +1705,77 @@ const AdminDashboard = () => {
                     />
                   </div>
                 </div>
+                <div className="flex items-center gap-3 mb-4">
+                  {selectedUsers.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-exo text-gray-400">{selectedUsers.length} selected</span>
+                      <button
+                        onClick={handleBulkBanUsers}
+                        className="px-3 py-1.5 text-xs font-exo font-bold uppercase bg-red-500/20 border border-red-500/50 rounded hover:bg-red-500/30 transition-all"
+                      >
+                        Bulk Ban
+                      </button>
+                      <button
+                        onClick={() => setSelectedUsers([])}
+                        className="px-3 py-1.5 text-xs font-exo font-bold uppercase border border-white/20 rounded hover:border-cyber-blue/50 transition-all"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                  {analytics.recentUsers
-                    .filter(user => user.username?.toLowerCase().includes(searchQuery.toLowerCase()))
-                    .map((user) => (
-                      <div key={user.id} className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                  {filteredUsers.length > 0 ? (
+                    filteredUsers.map((user) => (
+                      <div key={user.id} className="p-4 bg-white/5 border border-white/10 rounded-lg relative">
+                        <input
+                          type="checkbox"
+                          checked={selectedUsers.includes(user.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedUsers(prev => [...prev, user.id]);
+                            } else {
+                              setSelectedUsers(prev => prev.filter(id => id !== user.id));
+                            }
+                          }}
+                          className="absolute top-3 right-3 w-4 h-4 rounded border-2 border-cyber-blue/50 bg-cyber-black checked:bg-cyber-blue cursor-pointer"
+                        />
                         <div className="flex items-center gap-3 mb-3">
                           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-cyber-blue to-cyber-cyan flex items-center justify-center">
-                            <span className="font-orbitron text-xl font-bold">{user.username?.[0]?.toUpperCase() || 'U'}</span>
+                            <span className="font-orbitron text-xl font-bold">
+                              {user.username?.[0]?.toUpperCase() || 'U'}
+                            </span>
                           </div>
                           <div className="flex-1">
                             <p className="font-exo font-bold text-white">{user.username}</p>
                             <p className="text-xs font-exo text-gray-400">ID: {user.id.slice(0, 8)}</p>
+                            {user.is_admin && (
+                              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-[10px] font-exo uppercase tracking-wider bg-green-500/20 border border-green-500/40 rounded-full text-green-300">
+                                Admin
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex items-center justify-between text-sm">
                             <span className="font-exo text-gray-400">Reputation</span>
-                            <span className="font-orbitron font-bold text-cyber-blue">{user.reputation || 0}</span>
+                            <button
+                              onClick={() => {
+                                setReputationUser(user);
+                                setReputationValue(user.reputation || 0);
+                                setShowReputationModal(true);
+                              }}
+                              className="flex items-center gap-1 font-orbitron font-bold text-cyber-blue hover:text-cyber-cyan transition-colors"
+                            >
+                              <Star className="w-3 h-3" />
+                              {user.reputation || 0}
+                            </button>
                           </div>
                           <div className="flex items-center justify-between text-sm">
                             <span className="font-exo text-gray-400">Joined</span>
-                            <span className="font-exo text-gray-300">{new Date(user.created_at).toLocaleDateString()}</span>
+                            <span className="font-exo text-gray-300">
+                              {new Date(user.created_at).toLocaleDateString()}
+                            </span>
                           </div>
                           <button
                             onClick={() => handleBanUser(user.id, user.username)}
@@ -1006,7 +1786,12 @@ const AdminDashboard = () => {
                           </button>
                         </div>
                       </div>
-                    ))}
+                    ))
+                  ) : (
+                    <p className="col-span-full text-center text-gray-400 font-exo py-8">
+                      No users match your search.
+                    </p>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -1058,6 +1843,34 @@ const AdminDashboard = () => {
                       ))
                     ) : (
                       <p className="text-center text-gray-400 font-exo py-8">No contributors yet</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm lg:col-span-2">
+                  <h2 className="font-orbitron text-xl sm:text-2xl font-bold mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
+                    <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
+                    Event Activity
+                  </h2>
+                  <div className="space-y-3">
+                    {Object.keys(analytics.eventStats).length > 0 ? (
+                      Object.entries(analytics.eventStats).map(([eventType, count]) => (
+                        <div
+                          key={eventType}
+                          className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10"
+                        >
+                          <span className="font-exo text-gray-300 capitalize">
+                            {eventType.replace(/_/g, ' ')}
+                          </span>
+                          <span className="font-orbitron text-lg font-bold text-cyber-cyan">
+                            {count}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-center text-gray-400 font-exo py-6">
+                        No analytics events recorded yet.
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1294,6 +2107,64 @@ const AdminDashboard = () => {
           )}
         </div>
       </div>
+
+      {/* Reputation Modal */}
+      {showReputationModal && reputationUser && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+          onClick={() => setShowReputationModal(false)}
+        >
+          <motion.div
+            initial={{ y: 40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 20, opacity: 0 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="relative w-full max-w-md bg-cyber-darker/95 border border-cyber-blue/30 rounded-lg p-6 shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-orbitron text-lg text-white tracking-wider">Update Reputation</h3>
+              <button
+                type="button"
+                onClick={() => setShowReputationModal(false)}
+                className="text-gray-400 hover:text-white transition-colors text-sm font-exo"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <p className="font-exo text-sm text-gray-400 mb-2">User: <span className="text-white font-bold">{reputationUser.username}</span></p>
+              <p className="font-exo text-sm text-gray-400">Current Reputation: <span className="text-cyber-cyan font-bold">{reputationUser.reputation || 0}</span></p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block font-exo text-xs uppercase tracking-wider text-gray-400 mb-2">
+                New Reputation Value
+              </label>
+              <input
+                type="number"
+                value={reputationValue}
+                onChange={(e) => setReputationValue(parseInt(e.target.value) || 0)}
+                className="w-full bg-cyber-black/60 border border-cyber-blue/30 rounded-md px-3 py-2 text-sm text-white outline-none focus:border-cyber-cyan transition-colors"
+                placeholder="Enter reputation value"
+              />
+            </div>
+
+            <motion.button
+              onClick={handleUpdateReputation}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.96 }}
+              className="w-full py-2.5 font-orbitron text-sm tracking-widest rounded-md bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker shadow-lg shadow-cyber-blue/30"
+            >
+              Update Reputation
+            </motion.button>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 };

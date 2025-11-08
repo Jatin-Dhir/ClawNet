@@ -5,9 +5,11 @@ import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReactRefresh from "eslint-plugin-react-refresh";
 
 export default [
+  {
+    ignores: ["dist/**", "node_modules/**", "build/**", "tailwind.config.js"],
+  },
   pluginJs.configs.recommended,
   {
-    ignores: ["dist/**", "node_modules/**", "build/**"],
     files: ["**/*.{js,mjs,cjs,jsx}"],
     plugins: {
       "react": pluginReact,

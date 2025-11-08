@@ -88,6 +88,7 @@ const AuthModal = ({ onClose }) => {
           data: {
             username: sanitizedUsername,
           },
+          emailRedirectTo: `${window.location.origin}/hub`,
         },
       });
       if (error) {
