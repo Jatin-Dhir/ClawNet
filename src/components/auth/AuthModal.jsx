@@ -139,13 +139,14 @@ const AuthModal = ({ onClose }) => {
           {isLogin ? 'Access the Hub' : 'Join The Grid'}
         </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" onClick={(e) => e.stopPropagation()}>
           {!isLogin && (
             <input
               type="text"
               placeholder="Username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
               className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
               required
             />
@@ -155,6 +156,7 @@ const AuthModal = ({ onClose }) => {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
             className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
             required
           />
@@ -163,6 +165,7 @@ const AuthModal = ({ onClose }) => {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
             className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
             required
           />
@@ -172,6 +175,7 @@ const AuthModal = ({ onClose }) => {
               placeholder="Confirm Password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
               className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
               required
             />

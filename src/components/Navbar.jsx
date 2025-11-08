@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Shield, Menu, X, LogOut, User, LayoutDashboard, Settings, Lock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../supabaseClient';
 import SystemShutdown from './transitions/SystemShutdown';
 
 const Navbar = ({ onSignInClick }) => {
@@ -25,16 +26,26 @@ const Navbar = ({ onSignInClick }) => {
   // Check if user is admin
   useEffect(() => {
     const checkAdmin = async () => {
-      if (session?.user?.email) {
-        // You can set admin emails here or fetch from database
-        const adminEmails = [
-          'team@projectclawnet.online',
-          'admin@projectclawnet.online',
-          'dhirjatin@icloud.com',
-          // Add more admin emails here
-        ];
-        setIsAdmin(adminEmails.includes(session.user.email.toLowerCase()));
-      } else {
+      if (!session?.user) {
+        setIsAdmin(false);
+        return;
+      }
+
+      // Check database for is_admin flag
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!error && data) {
+          setIsAdmin(data.is_admin === true);
+        } else {
+          setIsAdmin(false);
+        }
+      } catch (error) {
+        console.error('Error checking admin status:', error);
         setIsAdmin(false);
       }
     };

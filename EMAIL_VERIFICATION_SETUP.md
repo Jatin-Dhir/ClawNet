@@ -14,31 +14,42 @@ Configure the email redirect URL in your Supabase project dashboard.
 
 2. **Update Authentication Settings**
    - Go to **Authentication** → **URL Configuration**
+   
    - Find **Site URL** and set it to your production URL:
      ```
      https://projectclawnet.online
      ```
    - Or for local development:
      ```
-     http://localhost:5173
+     http://localhost:5175
      ```
+     (Use whatever port Vite is running on)
 
 3. **Configure Redirect URLs**
-   - Under **Redirect URLs**, add:
+   - Under **Redirect URLs**, add ALL of these:
      ```
      https://projectclawnet.online/hub
-     http://localhost:5173/hub
      https://projectclawnet.online/*
+     http://localhost:5173/hub
      http://localhost:5173/*
+     http://localhost:5174/hub
+     http://localhost:5174/*
+     http://localhost:5175/hub
+     http://localhost:5175/*
      ```
+   
+   **Why multiple ports?** Vite picks the next available port if one is in use.
 
-4. **Update Email Templates** (Optional)
+4. **Update Email Templates**
    - Go to **Authentication** → **Email Templates**
-   - Customize the verification email template
-   - The `{{ .ConfirmationURL }}` variable will now use your custom domain
+   - Click on **"Confirm signup"** template
+   - Make sure it contains `{{ .ConfirmationURL }}`
+   - The URL will now automatically use your Site URL
+   - **Important**: The redirect happens AFTER clicking the confirmation link
 
 5. **Save Changes**
    - Click **Save** at the bottom of the page
+   - Wait 1-2 minutes for changes to propagate
 
 ## Code Changes (Already Applied)
 
