@@ -628,67 +628,38 @@ const AdminDashboard = () => {
 
     const toastId = toast.loading('Adding admin...');
     try {
-      // Search for user by email in profiles table
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, username')
-        .eq('id', (await supabase.auth.admin.listUsers()).data.users.find(u => u.email?.toLowerCase() === newAdminEmail.toLowerCase())?.id)
+      const emailLower = newAdminEmail.toLowerCase().trim();
+      
+      // Look up user by email in our user_emails table
+      const { data: userEmail, error: emailError } = await supabase
+        .from('user_emails')
+        .select('user_id')
+        .eq('email', emailLower)
         .single();
 
-      if (profileError) {
-        // Try to find by auth email
-        const { data: authData } = await supabase.auth.admin.listUsers();
-        const user = authData?.users?.find(u => u.email?.toLowerCase() === newAdminEmail.toLowerCase());
-        
-        if (!user) {
-          toast.error('User not found. They must sign up first.', { id: toastId });
-          return;
-        }
-
-        // Check if profile exists
-        const { data: existingProfile } = await supabase
-          .from('profiles')
-          .select('id, username')
-          .eq('id', user.id)
-          .single();
-
-        if (!existingProfile) {
-          toast.error('User profile not found. Ask them to sign in first.', { id: toastId });
-          return;
-        }
-
-        // Update the profile to make them admin
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({ is_admin: true })
-          .eq('id', user.id);
-
-        if (updateError) throw updateError;
-
-        await logAdminAction('add_admin', 'user', user.id, { email: newAdminEmail });
-        
-        toast.success(`${newAdminEmail} is now an admin. They need to refresh to see the admin button.`, { id: toastId });
-        setNewAdminEmail('');
-        fetchAdmins();
+      if (emailError || !userEmail) {
+        toast.error('User not found. Make sure they have signed up and logged in at least once.', { id: toastId });
         return;
       }
 
-      // Update existing profile
-      const { error: updateError } = await supabase
+      // Update the profile to make them admin
+      const { data: updatedProfile, error: updateError } = await supabase
         .from('profiles')
         .update({ is_admin: true })
-        .eq('id', profileData.id);
+        .eq('id', userEmail.user_id)
+        .select('id, username')
+        .single();
 
       if (updateError) throw updateError;
 
-      await logAdminAction('add_admin', 'user', profileData.id, { email: newAdminEmail });
+      await logAdminAction('add_admin', 'user', updatedProfile.id, { email: newAdminEmail, username: updatedProfile.username });
       
-      toast.success(`${newAdminEmail} is now an admin. They need to refresh to see the admin button.`, { id: toastId });
+      toast.success(`${updatedProfile.username} is now an admin! They need to refresh to see the admin button.`, { id: toastId });
       setNewAdminEmail('');
       fetchAdmins();
     } catch (error) {
       console.error('Error adding admin:', error);
-      toast.error('Failed to add admin. Make sure the user has signed up.', { id: toastId });
+      toast.error('Failed to add admin. Ensure the user has signed up first.', { id: toastId });
     }
   };
 

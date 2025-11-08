@@ -1,18 +1,65 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Loader } from 'lucide-react';
+import { X, Loader, Mail, Github, Phone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../supabaseClient';
 import toast from 'react-hot-toast';
 import { validateEmail, validatePassword, sanitizeInput } from '../../utils/security';
 
 const AuthModal = ({ onClose }) => {
   const [isLogin, setIsLogin] = useState(true);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn, signUp } = useAuth();
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const sanitizedEmail = sanitizeInput(email).toLowerCase();
+
+    if (!validateEmail(sanitizedEmail)) {
+      toast.error('Please enter a valid email address.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(sanitizedEmail, {
+        redirectTo: `${window.location.origin}/hub`,
+      });
+
+      if (error) throw error;
+
+      toast.success('Password reset email sent! Check your inbox.');
+      setIsForgotPassword(false);
+      setEmail('');
+    } catch (error) {
+      toast.error(error.message || 'Failed to send reset email');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOAuthSignIn = async (provider) => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: provider,
+        options: {
+          redirectTo: `${window.location.origin}/hub`,
+        },
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      toast.error(`Failed to sign in with ${provider}`);
+      console.error('OAuth error:', error);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -120,77 +167,161 @@ const AuthModal = ({ onClose }) => {
           <X size={24} />
         </button>
 
-        <div className="flex justify-center mb-6 border-b border-cyber-blue/20">
-          <button
-            onClick={() => setIsLogin(true)}
-            className={`px-6 py-2 font-orbitron text-lg transition-colors ${isLogin ? 'text-cyber-blue border-b-2 border-cyber-blue' : 'text-gray-500'}`}
-          >
-            Sign In
-          </button>
-          <button
-            onClick={() => setIsLogin(false)}
-            className={`px-6 py-2 font-orbitron text-lg transition-colors ${!isLogin ? 'text-cyber-blue border-b-2 border-cyber-blue' : 'text-gray-500'}`}
-          >
-            Sign Up
-          </button>
-        </div>
+        {!isForgotPassword && (
+          <div className="flex justify-center mb-6 border-b border-cyber-blue/20">
+            <button
+              onClick={() => setIsLogin(true)}
+              className={`px-6 py-2 font-orbitron text-lg transition-colors ${isLogin ? 'text-cyber-blue border-b-2 border-cyber-blue' : 'text-gray-500'}`}
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => setIsLogin(false)}
+              className={`px-6 py-2 font-orbitron text-lg transition-colors ${!isLogin ? 'text-cyber-blue border-b-2 border-cyber-blue' : 'text-gray-500'}`}
+            >
+              Sign Up
+            </button>
+          </div>
+        )}
 
         <h2 className="font-orbitron text-3xl font-bold text-center text-white mb-6">
-          {isLogin ? 'Access the Hub' : 'Join The Grid'}
+          {isForgotPassword ? 'Reset Password' : isLogin ? 'Access the Hub' : 'Join The Grid'}
         </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-6" onClick={(e) => e.stopPropagation()}>
-          {!isLogin && (
-            <input
-              type="text"
-              placeholder="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              onKeyDown={(e) => e.stopPropagation()}
-              className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
-              required
-            />
-          )}
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
-            className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
-            className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
-            required
-          />
-          {!isLogin && (
-            <input
-              type="password"
-              placeholder="Confirm Password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              onKeyDown={(e) => e.stopPropagation()}
-              className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
-              required
-            />
-          )}
-
-          <motion.button
-            type="submit"
-            disabled={loading}
-            whileHover={{ scale: 1.03, boxShadow: '0 0 25px rgba(0, 224, 255, 0.5)' }}
-            whileTap={{ scale: 0.98 }}
-            className="w-full flex items-center justify-center gap-2 px-8 py-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-black font-orbitron font-bold rounded-md transition-shadow duration-300 disabled:opacity-50"
+        {isForgotPassword && (
+          <button
+            onClick={() => {
+              setIsForgotPassword(false);
+              setEmail('');
+            }}
+            className="mb-4 text-sm font-exo text-cyber-blue hover:text-cyber-cyan transition-colors"
           >
-            {loading ? <Loader className="animate-spin" size={20} /> : (isLogin ? 'Sign In' : 'Create Account')}
-          </motion.button>
-        </form>
+            ← Back to Sign In
+          </button>
+        )}
+
+        {isForgotPassword ? (
+          <form onSubmit={handleForgotPassword} className="space-y-6" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
+              required
+            />
+            <motion.button
+              type="submit"
+              disabled={loading}
+              whileHover={{ scale: 1.03, boxShadow: '0 0 25px rgba(0, 224, 255, 0.5)' }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full flex items-center justify-center gap-2 px-8 py-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-black font-orbitron font-bold rounded-md transition-shadow duration-300 disabled:opacity-50"
+            >
+              {loading ? <Loader className="animate-spin" size={20} /> : 'Send Reset Link'}
+            </motion.button>
+          </form>
+        ) : (
+          <>
+            <form onSubmit={handleSubmit} className="space-y-6" onClick={(e) => e.stopPropagation()}>
+              {!isLogin && (
+                <input
+                  type="text"
+                  placeholder="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
+                  required
+                />
+              )}
+              <input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
+                required
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
+                required
+              />
+              {!isLogin && (
+                <input
+                  type="password"
+                  placeholder="Confirm Password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
+                  required
+                />
+              )}
+
+              {isLogin && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsForgotPassword(true)}
+                    className="text-sm font-exo text-cyber-blue hover:text-cyber-cyan transition-colors"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+
+              <motion.button
+                type="submit"
+                disabled={loading}
+                whileHover={{ scale: 1.03, boxShadow: '0 0 25px rgba(0, 224, 255, 0.5)' }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full flex items-center justify-center gap-2 px-8 py-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-black font-orbitron font-bold rounded-md transition-shadow duration-300 disabled:opacity-50"
+              >
+                {loading ? <Loader className="animate-spin" size={20} /> : (isLogin ? 'Sign In' : 'Create Account')}
+              </motion.button>
+            </form>
+
+            {/* OAuth Options */}
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-cyber-blue/20"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-cyber-dark text-gray-400 font-exo">Or continue with</span>
+                </div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <motion.button
+                  onClick={() => handleOAuthSignIn('google')}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-white/10 border border-white/20 rounded-md text-white hover:bg-white/20 transition-all font-exo text-sm"
+                >
+                  <Mail size={18} />
+                  Google
+                </motion.button>
+                <motion.button
+                  onClick={() => handleOAuthSignIn('github')}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-white/10 border border-white/20 rounded-md text-white hover:bg-white/20 transition-all font-exo text-sm"
+                >
+                  <Github size={18} />
+                  GitHub
+                </motion.button>
+              </div>
+            </div>
+          </>
+        )}
       </motion.div>
     </motion.div>
   );
