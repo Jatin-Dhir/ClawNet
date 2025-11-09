@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, useInView } from 'framer-motion';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import {
   Shield,
   Users,
@@ -32,6 +32,7 @@ import {
   TrendingDown,
   Bell,
   Send,
+  Lock,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,6 +48,8 @@ const FALLBACK_ADMIN_EMAILS = [
 
 const AdminDashboard = () => {
   const { session, profile } = useAuth();
+  const outletContext = typeof useOutletContext === 'function' ? useOutletContext() : {};
+  const { triggerTransition, onSignInClick } = outletContext || {};
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
   const [loading, setLoading] = useState(true);
@@ -83,6 +86,8 @@ const AdminDashboard = () => {
     uptime: 99.9,
     activeConnections: 0
   });
+  const [missionThreads, setMissionThreads] = useState([]);
+  const [missionThreadsLoading, setMissionThreadsLoading] = useState(false);
   const [analytics, setAnalytics] = useState({
     totalUsers: 0,
     totalPosts: 0,
@@ -191,6 +196,11 @@ const AdminDashboard = () => {
     const interval = setInterval(fetchAnalytics, 30000);
     return () => clearInterval(interval);
   }, [isAuthorized]);
+
+  useEffect(() => {
+    if (!isAuthorized) return;
+    fetchMissionThreads();
+  }, [isAuthorized, fetchMissionThreads]);
 
   useEffect(() => {
     if (activeTab === 'moderation' && isAuthorized) {
@@ -585,6 +595,14 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleRequestSignIn = useCallback(() => {
+    if (typeof triggerTransition === 'function' && typeof onSignInClick === 'function') {
+      triggerTransition(() => onSignInClick());
+    } else if (typeof onSignInClick === 'function') {
+      onSignInClick();
+    }
+  }, [triggerTransition, onSignInClick]);
+
   const logAdminAction = async (actionType, targetType, targetId, details = {}) => {
     try {
       await supabase.from('admin_actions').insert({
@@ -597,6 +615,70 @@ const AdminDashboard = () => {
       });
     } catch (error) {
       console.error('Error logging admin action:', error);
+    }
+  };
+
+  const fetchMissionThreads = useCallback(async () => {
+    if (!isAuthorized) return;
+    setMissionThreadsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('mission_threads')
+        .select(`
+          id,
+          mission_id,
+          title,
+          status,
+          is_locked,
+          mission:missions_featured (
+            id,
+            slug,
+            title,
+            band
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setMissionThreads(data ?? []);
+    } catch (error) {
+      console.error('Error fetching mission threads:', error);
+      toast.error('Failed to load mission threads');
+    } finally {
+      setMissionThreadsLoading(false);
+    }
+  }, [isAuthorized]);
+
+  const toggleMissionThread = async (thread, nextLocked) => {
+    const toastId = toast.loading(nextLocked ? 'Locking thread…' : 'Unlocking thread…');
+    try {
+      const { error } = await supabase
+        .from('mission_threads')
+        .update({ is_locked: nextLocked })
+        .eq('id', thread.id);
+
+      if (error) throw error;
+
+      setMissionThreads((prev) =>
+        prev.map((item) =>
+          item.id === thread.id ? { ...item, is_locked: nextLocked } : item
+        )
+      );
+
+      await logAdminAction(
+        nextLocked ? 'lock_mission_thread' : 'unlock_mission_thread',
+        'mission_thread',
+        thread.id,
+        {
+          mission: thread.mission?.title,
+          slug: thread.mission?.slug,
+        }
+      );
+
+      toast.success(nextLocked ? 'Thread locked' : 'Thread unlocked', { id: toastId });
+    } catch (error) {
+      console.error('Error toggling mission thread:', error);
+      toast.error('Failed to update thread state', { id: toastId });
     }
   };
 
@@ -1004,8 +1086,82 @@ const AdminDashboard = () => {
     );
   }
 
-  if (!session || !isAuthorized) {
-    return <Navigate to="/" replace />;
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-cyber-black text-white flex items-center justify-center px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="max-w-md w-full rounded-2xl border border-white/10 bg-white/5 p-8 backdrop-blur-md text-center space-y-6"
+        >
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-cyber-blue/20 border border-cyber-blue/40">
+            <Shield className="h-8 w-8 text-cyber-blue" />
+          </div>
+          <div>
+            <h1 className="font-orbitron text-2xl font-bold tracking-[0.25em] uppercase text-white">
+              Admin Access
+            </h1>
+            <p className="mt-3 font-exo text-sm text-gray-400">
+              Please sign in with an authorized administrator account to access the control panel.
+            </p>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={handleRequestSignIn}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-cyber-blue/60 bg-cyber-blue/20 px-5 py-2.5 font-orbitron text-xs uppercase tracking-[0.35em] text-cyber-blue transition-all hover:bg-cyber-blue/30 hover:text-white"
+          >
+            Sign In
+          </motion.button>
+          <Link
+            to="/"
+            className="block font-exo text-xs uppercase tracking-[0.3em] text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            Back to Home
+          </Link>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-cyber-black text-white flex items-center justify-center px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="max-w-lg w-full rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-8 backdrop-blur-md text-center space-y-6"
+        >
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-yellow-500/10 border border-yellow-500/40">
+            <Lock className="h-8 w-8 text-yellow-400" />
+          </div>
+          <div>
+            <h1 className="font-orbitron text-2xl font-bold tracking-[0.25em] uppercase text-white">
+              Restricted Area
+            </h1>
+            <p className="mt-3 font-exo text-sm text-yellow-200/80">
+              Your account is signed in, but it is not flagged as an administrator. Contact a ClawNet admin to request elevated access.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3">
+            <Link
+              to="/hub"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-5 py-2.5 font-orbitron text-xs uppercase tracking-[0.35em] text-gray-200 transition-all hover:border-cyber-blue/50 hover:text-white"
+            >
+              Go to Community Hub
+            </Link>
+            <Link
+              to="/"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/5 px-5 py-2.5 font-exo text-xs uppercase tracking-[0.3em] text-gray-400 transition-all hover:text-gray-200"
+            >
+              Return Home
+            </Link>
+          </div>
+        </motion.div>
+      </div>
+    );
   }
 
   const stats = [
@@ -2132,6 +2288,86 @@ const AdminDashboard = () => {
                         )}
                       </div>
                     </motion.div>
+                  )}
+                </div>
+
+                <div className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+                  <div className="mb-4 sm:mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3">
+                        <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
+                        Mission Threads
+                      </h2>
+                      <p className="font-exo text-sm text-gray-400">
+                        Enable or pause mission discussions across the hub.
+                      </p>
+                    </div>
+                    <motion.button
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={fetchMissionThreads}
+                      className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.32em] text-gray-300 transition-all hover:border-cyber-blue/60 hover:text-white"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Refresh
+                    </motion.button>
+                  </div>
+
+                  {missionThreadsLoading ? (
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-center text-sm font-exo text-gray-400">
+                      Loading mission threads…
+                    </div>
+                  ) : missionThreads.length === 0 ? (
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-center text-sm font-exo text-gray-400">
+                      No mission threads found. Run the latest migration to seed them.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {missionThreads.map((thread) => {
+                        const isLocked = thread.is_locked;
+                        return (
+                          <div
+                            key={thread.id}
+                            className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div>
+                              <p className="font-orbitron text-white text-sm sm:text-base">
+                                {thread.mission?.title ?? thread.title}
+                              </p>
+                              <p className="font-exo text-xs text-gray-400">
+                                Thread: {thread.title}
+                                {thread.mission?.band ? ` • ${thread.mission.band}` : ''}
+                              </p>
+                              <p className="font-exo text-[11px] text-gray-500">
+                                Status: {thread.status || 'Live'}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span
+                                className={`font-exo text-xs uppercase tracking-[0.3em] ${
+                                  isLocked ? 'text-gray-500' : 'text-cyber-cyan'
+                                }`}
+                              >
+                                {isLocked ? 'Paused' : 'Live'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => toggleMissionThread(thread, !isLocked)}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full border border-white/10 transition-colors ${
+                                  isLocked ? 'bg-white/10' : 'bg-cyber-blue/60'
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                                    isLocked ? 'translate-x-1' : 'translate-x-5'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>

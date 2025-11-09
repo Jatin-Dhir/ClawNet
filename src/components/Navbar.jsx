@@ -133,9 +133,20 @@ const Navbar = ({ onSignInClick }) => {
             <div className="flex items-center gap-4">
               {session ? (
                 <div className="hidden md:flex items-center gap-4">
-                  <span className="font-exo text-sm text-gray-300">Welcome,&nbsp;
+                  <span className="font-exo text-sm text-gray-300">
+                    Welcome,&nbsp;
                     <span className="font-bold text-cyber-cyan">{displayName}</span>
                   </span>
+                  <Link to={profile?.username ? `/profile/${profile.username}` : '/profile'} className="no-quantum-transform">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-md text-sm font-bold text-white/80 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
+                    >
+                      <User size={16} />
+                      Profile
+                    </motion.button>
+                  </Link>
                   {isAdmin && (
                   <Link to="/admin" className="no-quantum-transform">
                       <motion.button
@@ -309,8 +320,17 @@ const Navbar = ({ onSignInClick }) => {
 
                     {/* Hub Link */}
                     <motion.li variants={{ hidden: { opacity: 0, y: -10 }, visible: { opacity: 1, y: 0 } }}>
-                      <Link 
-                        to="/hub" 
+                    <Link 
+                      to={profile?.username ? `/profile/${profile.username}` : '/profile'} 
+                      onClick={() => setMobileMenuOpen(false)} 
+                      className="flex items-center gap-3 px-4 py-3 rounded-md text-gray-300 hover:text-white hover:bg-cyber-gray/20 transition-colors touch-manipulation border-l-2 border-transparent hover:border-cyber-blue focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-dark"
+                    >
+                      <User size={18} className="text-cyber-blue/70" />
+                      <span className="font-exo text-sm font-medium">Profile</span>
+                    </Link>
+
+                    <Link 
+                      to="/hub" 
                         onClick={() => setMobileMenuOpen(false)} 
                         className="flex items-center gap-3 px-4 py-3 rounded-md text-gray-300 hover:text-white hover:bg-cyber-gray/20 transition-colors touch-manipulation border-l-2 border-transparent hover:border-cyber-blue focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-dark"
                       >
