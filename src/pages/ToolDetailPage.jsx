@@ -1,5 +1,5 @@
 import React from 'react';
-import { useParams, Navigate, Link } from 'react-router-dom';
+import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, Cpu, Activity, ArrowLeft, Terminal, Code, HelpCircle } from 'lucide-react';
 
@@ -86,6 +86,7 @@ const Section = ({ title, icon: Icon, children }) => (
 const ToolDetailPage = () => {
   const { toolId } = useParams();
   const tool = toolsData[toolId];
+  const navigate = useNavigate();
 
   if (!tool) {
     return <Navigate to="/" replace />;
@@ -101,10 +102,20 @@ const ToolDetailPage = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <Link to="/" className="flex items-center gap-2 text-cyber-cyan hover:text-white mb-8 group">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.history.length > 1) {
+                navigate(-1);
+              } else {
+                navigate('/', { replace: true });
+              }
+            }}
+            className="flex items-center gap-2 text-cyber-cyan hover:text-white mb-8 group focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black rounded-md px-2 py-1"
+          >
             <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
-            <span className="font-exo">Back to Home</span>
-          </Link>
+            <span className="font-exo">Back</span>
+          </button>
           
           <div className="flex items-center gap-4 mb-4">
             <Icon className="w-12 h-12 text-cyber-blue" />

@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { useParams, Navigate, Link } from 'react-router-dom';
+import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import { motion, useInView } from 'framer-motion';
 import { 
   Shield, 
@@ -210,6 +210,7 @@ const ServiceDetailPage = () => {
   const { serviceId } = useParams();
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
+  const navigate = useNavigate();
   
   const service = servicesData[serviceId];
 
@@ -230,14 +231,21 @@ const ServiceDetailPage = () => {
             transition={{ duration: 0.6 }}
             className="mb-20"
           >
-            <Link
-              to="/cyber-operations"
-              className="inline-flex items-center gap-2 mb-6 sm:mb-8 rounded-full px-3 py-2 bg-cyber-black/70 border border-white/10 text-gray-400 hover:text-white hover:border-cyber-blue/60 transition-all duration-300 touch-manipulation"
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) {
+                  navigate(-1);
+                } else {
+                  navigate('/cyber-operations', { replace: true });
+                }
+              }}
+              className="inline-flex items-center gap-2 mb-6 sm:mb-8 rounded-full px-3 py-2 bg-cyber-black/70 border border-white/10 text-gray-400 hover:text-white hover:border-cyber-blue/60 transition-all duration-300 touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
               aria-label="Back to services"
             >
-              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+              <ArrowLeft className="w-4 h-4 transition-transform" />
               <span className="font-exo text-xs sm:text-sm uppercase tracking-wider">Back</span>
-            </Link>
+            </button>
 
             <div className="flex flex-col md:flex-row md:items-start gap-5 md:gap-6 mb-8">
               <div className={`p-4 sm:p-5 bg-gradient-to-br ${service.gradient} rounded-xl flex-shrink-0 w-fit`}>

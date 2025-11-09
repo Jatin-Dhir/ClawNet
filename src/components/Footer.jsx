@@ -83,7 +83,7 @@ const Footer = () => {
                   <a
                     href={link.href}
                     onClick={(e) => scrollToSection(e, link.href)}
-                    className="font-exo text-gray-400 hover:text-cyber-blue transition-colors text-sm cursor-pointer"
+                    className="font-exo text-gray-400 hover:text-cyber-blue transition-colors text-sm cursor-pointer rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-darker px-1"
                   >
                     {link.name}
                   </a>
@@ -115,7 +115,7 @@ const Footer = () => {
                   rel="noopener noreferrer"
                   whileHover={{ scale: 1.1, y: -2 }}
                   whileTap={{ scale: 0.95 }}
-                  className="w-10 h-10 rounded-lg bg-cyber-gray/50 border border-cyber-blue/20 hover:border-cyber-blue/60 flex items-center justify-center transition-all duration-300 group"
+                  className="w-10 h-10 rounded-lg bg-cyber-gray/50 border border-cyber-blue/20 hover:border-cyber-blue/60 flex items-center justify-center transition-all duration-300 group focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-darker"
                   aria-label={social.label}
                 >
                   <social.icon className="w-5 h-5 text-gray-400 group-hover:text-cyber-blue transition-colors" />
@@ -130,7 +130,7 @@ const Footer = () => {
             onClick={() => setIsFeedbackOpen(true)}
             whileHover={{ scale: 1.04, boxShadow: '0 0 18px rgba(34, 211, 238, 0.25)' }}
             whileTap={{ scale: 0.96 }}
-            className="inline-flex items-center justify-center px-5 py-2 mb-4 font-orbitron text-sm tracking-wider rounded-md bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker shadow-lg shadow-cyber-blue/20 transition-shadow"
+            className="inline-flex items-center justify-center px-5 py-2 mb-4 font-orbitron text-sm tracking-wider rounded-md bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker shadow-lg shadow-cyber-blue/20 transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-darker"
           >
             Share Feedback
           </motion.button>

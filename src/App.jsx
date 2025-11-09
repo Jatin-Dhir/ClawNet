@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Outlet, useLocation } from 'react-router-dom';
+import { Routes, Route, Outlet, useLocation, useNavigationType } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from './contexts/AuthContext';
 
@@ -20,6 +20,7 @@ import CyberOperationsPage from './pages/CyberOperationsPage';
 import ServiceDetailPage from './pages/ServiceDetailPage';
 import AdminDashboard from './pages/AdminDashboard';
 import AboutPage from './pages/AboutPage';
+import MissionsPage from './pages/MissionsPage';
 
 const Layout = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -28,6 +29,7 @@ const Layout = () => {
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const { session } = useAuth();
   const location = useLocation();
+  const navigationType = useNavigationType();
 
   useEffect(() => {
     const handleKeyPress = (e) => {
@@ -47,8 +49,10 @@ const Layout = () => {
   }, [session]);
 
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [location.pathname]);
+    if (navigationType !== 'POP') {
+      window.scrollTo(0, 0);
+    }
+  }, [location.pathname, navigationType]);
 
   const triggerTransition = (callback) => {
     setTransitionCallback(() => callback);
@@ -153,6 +157,7 @@ function App() {
                 <Route path="about" element={<AboutPage />} />
                 <Route path="cyber-operations" element={<CyberOperationsPage />} />
                 <Route path="services/:serviceId" element={<ServiceDetailPage />} />
+                <Route path="missions" element={<MissionsPage />} />
                 <Route path="admin" element={<AdminDashboard />} />
                 <Route path="tools/:toolId" element={<ToolDetailPage />} />
                 <Route path="research/:postId" element={<ResearchPage />} />

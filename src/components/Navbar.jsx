@@ -122,7 +122,7 @@ const Navbar = ({ onSignInClick }) => {
                   key={item.name}
                   href={item.href}
                   onClick={(e) => scrollToSection(e, item.href)}
-                  className="font-exo text-sm font-medium text-gray-300 hover:text-cyber-blue transition-colors relative group"
+                  className="font-exo text-sm font-medium text-gray-300 hover:text-cyber-blue transition-colors relative group rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
                 >
                   {item.name}
                   <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-cyber-blue group-hover:w-full transition-all duration-300" />
@@ -137,11 +137,11 @@ const Navbar = ({ onSignInClick }) => {
                     <span className="font-bold text-cyber-cyan">{displayName}</span>
                   </span>
                   {isAdmin && (
-                    <Link to="/admin" className="no-quantum-transform">
+                  <Link to="/admin" className="no-quantum-transform">
                       <motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyber-blue to-cyber-cyan rounded-md text-white text-sm font-bold no-quantum-transform"
+                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyber-blue to-cyber-cyan rounded-md text-white text-sm font-bold no-quantum-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
                       >
                         <Lock size={16} />
                         Admin
@@ -152,7 +152,7 @@ const Navbar = ({ onSignInClick }) => {
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      className="flex items-center gap-2 px-4 py-2 bg-cyber-blue/10 border border-cyber-blue rounded-md text-cyber-blue text-sm font-bold no-quantum-transform"
+                      className="flex items-center gap-2 px-4 py-2 bg-cyber-blue/10 border border-cyber-blue rounded-md text-cyber-blue text-sm font-bold no-quantum-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
                     >
                       <LayoutDashboard size={16} />
                       Hub
@@ -162,7 +162,7 @@ const Navbar = ({ onSignInClick }) => {
                     onClick={handleSignOut}
                     whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,0,0,0.2)' }}
                     whileTap={{ scale: 0.95 }}
-                    className="p-2 rounded-md border border-red-500/50 text-red-500/80 hover:text-red-500"
+                  className="p-2 rounded-md border border-red-500/50 text-red-500/80 hover:text-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
                   >
                     <LogOut size={18} />
                   </motion.button>
@@ -172,7 +172,7 @@ const Navbar = ({ onSignInClick }) => {
                   onClick={onSignInClick}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="hidden md:flex items-center gap-2 px-4 py-2 border-2 border-cyber-blue rounded-md text-cyber-blue font-orbitron font-bold text-sm"
+                  className="hidden md:flex items-center gap-2 px-4 py-2 border-2 border-cyber-blue rounded-md text-cyber-blue font-orbitron font-bold text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
                 >
                   <User size={16} />
                   Sign In
@@ -299,7 +299,7 @@ const Navbar = ({ onSignInClick }) => {
                         <Link 
                           to="/admin" 
                           onClick={() => setMobileMenuOpen(false)} 
-                          className="flex items-center gap-3 px-4 py-3 rounded-md text-cyber-cyan hover:text-white bg-gradient-to-r from-cyber-blue/10 to-cyber-cyan/10 hover:from-cyber-blue/20 hover:to-cyber-cyan/20 transition-colors touch-manipulation border-l-2 border-cyber-blue border-opacity-50"
+                          className="flex items-center gap-3 px-4 py-3 rounded-md text-cyber-cyan hover:text-white bg-gradient-to-r from-cyber-blue/10 to-cyber-cyan/10 hover:from-cyber-blue/20 hover:to-cyber-cyan/20 transition-colors touch-manipulation border-l-2 border-cyber-blue border-opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-dark"
                         >
                           <Lock size={18} className="text-cyber-cyan" />
                           <span className="font-exo text-sm font-medium font-bold">Admin Panel</span>
@@ -312,7 +312,7 @@ const Navbar = ({ onSignInClick }) => {
                       <Link 
                         to="/hub" 
                         onClick={() => setMobileMenuOpen(false)} 
-                        className="flex items-center gap-3 px-4 py-3 rounded-md text-gray-300 hover:text-white hover:bg-cyber-gray/20 transition-colors touch-manipulation border-l-2 border-transparent hover:border-cyber-blue"
+                        className="flex items-center gap-3 px-4 py-3 rounded-md text-gray-300 hover:text-white hover:bg-cyber-gray/20 transition-colors touch-manipulation border-l-2 border-transparent hover:border-cyber-blue focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-dark"
                       >
                         <LayoutDashboard size={18} className="text-cyber-blue/70" />
                         <span className="font-exo text-sm font-medium">Community Hub</span>
@@ -329,7 +329,7 @@ const Navbar = ({ onSignInClick }) => {
                     >
                       <button 
                         onClick={handleSignOut} 
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md bg-transparent hover:bg-red-500/10 border border-red-500/20 hover:border-red-500/30 transition-all text-red-400/80 hover:text-red-400 font-exo text-sm touch-manipulation"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md bg-transparent hover:bg-red-500/10 border border-red-500/20 hover:border-red-500/30 transition-all text-red-400/80 hover:text-red-400 font-exo text-sm touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-dark"
                       >
                         <LogOut size={16} />
                         <span>Sign Out</span>
@@ -347,7 +347,7 @@ const Navbar = ({ onSignInClick }) => {
                         <a 
                           href={item.href} 
                           onClick={(e) => { scrollToSection(e, item.href); setMobileMenuOpen(false); }} 
-                          className="flex items-center px-4 py-3 rounded-md text-gray-400 hover:text-white hover:bg-cyber-gray/10 transition-all touch-manipulation border-l-2 border-transparent hover:border-cyber-blue/50"
+                          className="flex items-center px-4 py-3 rounded-md text-gray-400 hover:text-white hover:bg-cyber-gray/10 transition-all touch-manipulation border-l-2 border-transparent hover:border-cyber-blue/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-dark"
                         >
                           <span className="font-exo text-sm font-medium">{item.name}</span>
                         </a>
@@ -364,7 +364,7 @@ const Navbar = ({ onSignInClick }) => {
                     >
                       <button 
                         onClick={() => { onSignInClick(); setMobileMenuOpen(false); }} 
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-cyber-blue/10 hover:bg-cyber-blue/20 border border-cyber-blue/30 hover:border-cyber-blue/50 rounded-md text-cyber-blue hover:text-white font-exo text-sm font-medium transition-all touch-manipulation"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-cyber-blue/10 hover:bg-cyber-blue/20 border border-cyber-blue/30 hover:border-cyber-blue/50 rounded-md text-cyber-blue hover:text-white font-exo text-sm font-medium transition-all touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-dark"
                       >
                         <User size={16} />
                         <span>Sign In</span>

@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import PostCard from '../components/community/PostCard';
 import PostForm from '../components/community/PostForm';
-import { Plus, MessageSquare, Wrench, BrainCircuit, Rocket, Filter, Search, Ban, Loader } from 'lucide-react';
+import { Plus, MessageSquare, MessageSquarePlus, Wrench, BrainCircuit, Rocket, Filter, Search, Ban, Loader, Flame, Target } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 const CommunityHubPage = () => {
   const { profile } = useAuth();
+  const navigate = useNavigate();
+  const missionThreadsRef = useRef(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
@@ -26,6 +29,33 @@ const CommunityHubPage = () => {
     { name: 'Research', icon: BrainCircuit, category: 'research' },
     { name: 'Projects', icon: Rocket, category: 'project' },
   ];
+
+const missionThreadsShowcase = [
+  {
+    id: 'grid-challenge-07',
+    mission: 'Beacon Hunt',
+    cadence: 'Weekly Assignment',
+    activity: 'Last reply 5m ago',
+    summary: 'Teams share beacon detection scripts and mitigation playbooks.',
+    replies: 42,
+  },
+  {
+    id: 'vault-intrusion',
+    mission: 'Vault Intrusion Ops',
+    cadence: 'Seasonal Brief',
+    activity: 'Strategy drop 2h ago',
+    summary: 'Coordinating offensive/defensive pairings for the Specter token simulation.',
+    replies: 28,
+  },
+  {
+    id: 'signal-decode-sprint',
+    mission: 'Signal Decode Sprint',
+    cadence: 'Daily Run',
+    activity: 'Telemetry note 17m ago',
+    summary: 'Daily anomaly bundle breakdowns and ML feature tuning hints.',
+    replies: 31,
+  },
+];
 
   const fetchPosts = async () => {
     setLoading(true);
@@ -223,22 +253,42 @@ const CommunityHubPage = () => {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12"
+          className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-4"
         >
           <div>
             <h1 className="section-title mb-2">The Grid</h1>
-            <p className="font-exo text-lg text-gray-400">Welcome, <span className="font-bold text-cyber-cyan">{profile?.username}</span>. Where innovation meets intelligence.</p>
+            <p className="font-exo text-lg text-gray-400">
+              Welcome, <span className="font-bold text-cyber-cyan">{profile?.username}</span>. Where innovation meets intelligence.
+            </p>
           </div>
-          <motion.button
-            onClick={() => setIsPostModalOpen(true)}
-            whileHover={{ scale: 1.05, boxShadow: '0 0 25px rgba(0, 224, 255, 0.5)' }}
-            whileTap={{ scale: 0.95 }}
-            className="mt-4 md:mt-0 w-full md:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker font-orbitron font-bold rounded-md transition-shadow duration-300 text-sm md:text-base"
-          >
-            <Plus size={18} className="md:w-5 md:h-5" />
-            <span className="hidden sm:inline">Post a Tool or Idea</span>
-            <span className="sm:hidden">New Post</span>
-          </motion.button>
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+            <motion.button
+              onClick={() => navigate('/missions')}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              className="w-full sm:w-auto px-6 py-3 border border-cyber-blue/40 text-cyber-blue hover:text-white hover:border-cyber-blue/70 font-orbitron font-bold text-xs sm:text-sm uppercase tracking-[0.3em] rounded-md transition-all"
+            >
+              Missions
+            </motion.button>
+            <motion.button
+              onClick={() => missionThreadsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              className="w-full sm:w-auto px-6 py-3 border border-white/10 text-gray-300 hover:text-white hover:border-cyber-blue/60 font-orbitron font-bold text-xs sm:text-sm uppercase tracking-[0.3em] rounded-md transition-all"
+            >
+              Trends
+            </motion.button>
+            <motion.button
+              onClick={() => setIsPostModalOpen(true)}
+              whileHover={{ scale: 1.05, boxShadow: '0 0 25px rgba(0, 224, 255, 0.5)' }}
+              whileTap={{ scale: 0.95 }}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker font-orbitron font-bold rounded-md transition-shadow duration-300 text-sm md:text-base"
+            >
+              <Plus size={18} className="md:w-5 md:h-5" />
+              <span className="hidden sm:inline">Post a Tool or Idea</span>
+              <span className="sm:hidden">New Post</span>
+            </motion.button>
+          </div>
         </motion.div>
 
         <div className="mb-8 space-y-4">
@@ -276,6 +326,82 @@ const CommunityHubPage = () => {
             </div>
           </div>
         </div>
+
+        <section ref={missionThreadsRef} className="mb-12 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="font-orbitron text-lg sm:text-xl text-white uppercase tracking-[0.3em] flex items-center gap-2">
+                <Flame className="h-5 w-5 text-cyber-cyan" />
+                Mission Thread Trends
+              </h2>
+              <p className="font-exo text-sm text-gray-400">
+                Live forums for active operations. Jump in, share artifacts, and coordinate responses.
+              </p>
+            </div>
+            <motion.button
+              onClick={() => setIsPostModalOpen(true)}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md border border-cyber-blue/40 text-xs font-orbitron uppercase tracking-[0.3em] text-cyber-blue hover:border-cyber-blue/70 hover:text-white transition-all"
+            >
+              <MessageSquarePlus size={16} />
+              Start Mission Thread
+            </motion.button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {missionThreadsShowcase.map((thread) => (
+              <motion.div
+                key={thread.id}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4 }}
+                className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-orbitron text-xs uppercase tracking-[0.3em] text-gray-500">
+                      {thread.cadence}
+                    </p>
+                    <h3 className="font-orbitron text-lg text-white mt-1">{thread.mission}</h3>
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-md border border-white/15 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                    <Target size={14} />
+                    {thread.replies}
+                  </span>
+                </div>
+                <p className="font-exo text-sm text-gray-300 leading-relaxed">{thread.summary}</p>
+                <div className="flex items-center justify-between text-xs font-exo text-gray-500">
+                  <span>{thread.activity}</span>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/missions')}
+                    className="text-cyber-cyan hover:text-white transition-colors uppercase tracking-[0.3em]"
+                  >
+                    View Mission
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
+            <h3 className="font-orbitron text-sm uppercase tracking-[0.3em] text-white">Public Commons</h3>
+            <p className="font-exo text-sm text-gray-300 leading-relaxed">
+              Want an open forum? Use the Discussions tab to launch a public topic or drop intel outside of mission-specific threads.
+            </p>
+            <motion.button
+              onClick={() => setFilter('Discussions')}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-white/20 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-200 hover:border-cyber-blue/60 hover:text-white transition-all"
+            >
+              <MessageSquare size={16} />
+              Open Discussions
+            </motion.button>
+          </div>
+        </section>
 
         {loading ? (
           <div className="text-center py-16">
