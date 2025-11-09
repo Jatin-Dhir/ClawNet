@@ -2,12 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import RewardToken from '../components/RewardToken';
 import {
   Target,
   Trophy,
   ShieldCheck,
   Compass,
   Clock3,
+  Zap,
+  Medal,
+  Sparkles,
 } from 'lucide-react';
 
 const missions = [
@@ -291,10 +295,10 @@ const MissionsPage = () => {
 
   const timerFields = timeRemaining
     ? [
-        { label: 'Days', value: pad(timeRemaining.days) },
-        { label: 'Hours', value: pad(timeRemaining.hours) },
-        { label: 'Minutes', value: pad(timeRemaining.minutes) },
-        { label: 'Seconds', value: pad(timeRemaining.seconds) },
+        { label: 'Days', short: 'Days', value: pad(timeRemaining.days) },
+        { label: 'Hours', short: 'Hours', value: pad(timeRemaining.hours) },
+        { label: 'Minutes', short: 'Min', value: pad(timeRemaining.minutes) },
+        { label: 'Seconds', short: 'Sec', value: pad(timeRemaining.seconds) },
       ]
     : [];
 
@@ -443,18 +447,24 @@ const MissionsPage = () => {
                     </span>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-3">
-                    <div className="rounded-xl border border-white/10 bg-black/30 p-4 text-center">
-                      <p className="font-orbitron text-2xl text-white">{selectedMission.rewards.xp}</p>
-                      <p className="mt-1 font-exo text-[10px] uppercase tracking-[0.3em] text-gray-400">XP</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/30 p-4 text-center">
-                      <p className="font-orbitron text-base text-white">{selectedMission.rewards.badge}</p>
-                      <p className="mt-1 font-exo text-[10px] uppercase tracking-[0.3em] text-gray-400">Badge</p>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/30 p-4 text-center">
-                      <p className="font-orbitron text-base text-white">{selectedMission.rewards.extras}</p>
-                      <p className="mt-1 font-exo text-[10px] uppercase tracking-[0.3em] text-gray-400">Bonus</p>
-                    </div>
+                    <RewardToken
+                      value={selectedMission.rewards.xp}
+                      label="XP"
+                      glow="#00e0ff"
+                      valueClassName="text-2xl"
+                    />
+                    <RewardToken
+                      value={selectedMission.rewards.badge}
+                      label="Badge"
+                      glow="#9b30ff"
+                      valueClassName="text-base"
+                    />
+                    <RewardToken
+                      value={selectedMission.rewards.extras}
+                      label="Bonus"
+                      glow="#00f5ff"
+                      valueClassName="text-sm leading-tight"
+                    />
                   </div>
                   <p className="font-exo text-xs text-gray-400">
                     Monthly XP Crown awards go to the operative with the highest cumulative XP score. Stay active across missions to stay in contention.
@@ -566,11 +576,11 @@ const MissionsPage = () => {
                         </span>
                       </div>
                       <div className="grid grid-cols-4 gap-2 text-center">
-                        {timerFields.map(({ label, value }) => (
-                          <div key={label} className="rounded-lg border border-white/10 bg-black/30 p-2">
+                        {timerFields.map(({ short, value }) => (
+                          <div key={short} className="rounded-lg border border-white/10 bg-black/30 p-2">
                             <p className="font-orbitron text-lg text-white">{value}</p>
                             <p className="mt-1 font-exo text-[10px] uppercase tracking-[0.3em] text-gray-400">
-                              {label}
+                              {short}
                             </p>
                           </div>
                         ))}

@@ -6,14 +6,35 @@
 - Mission hub refreshed: seasonal/weekly/daily missions now lead, quick-task missions grouped separately.
 - Mission countdown compacted beneath submission form; command thread CTA now links to Grid trends.
 - Community Hub trends section added with curated mission discussion cards and smooth scrolling.
+- Landing page community hero temporarily retired while hub-first onboarding is defined.
+- Reward tokens introduced on mission detail page (XP, badge, bonus) with shared component + iconography.
+- Supabase migration drafted for `missions_featured` table (slot management, color accents, cover images seeded).
 - Commit pushed (`Refine missions flow and community hub`) – repo synced on main.
 
 ### 🚧 Planned Next Steps
-- Polish `Join The ClawNet Community` hero card for better spacing/composition.
-- Create Supabase-backed mission discussion threads (nested, moderated) and hook Trends cards to dedicated pages.
+- Define Supabase-backed mission discussion threads (nested, moderated) and hook Trends cards to dedicated pages.
 - Introduce iconography for XP + badges; surface badges in missions and future profile view.
 - Extend admin dashboard to manage the six live mission slots (seasonal, weekly, daily, three quick tasks) via form workflows.
 - After the above, build user profile + settings area with badge showcase.
+
+### 📐 Mission Discussion Threads — Schema & Flow (drafting)
+- **Tables**
+  - `mission_threads`: `id (uuid)`, `mission_id (text slug)`, `title`, `summary`, `status (active|locked|archived)`, `pinned (bool)`, `last_activity_at`, `created_at`, `created_by`.
+  - `mission_posts`: `id (uuid)`, `thread_id (uuid fk)`, `parent_id (uuid nullable)`, `body`, `attachment_url`, `status (visible|flagged|removed)`, `created_at`, `created_by`.
+  - Reuse `flagged_content` for moderation metadata; add `entity_type = 'mission_post'`.
+- **Access & RLS**
+  - Threads read-only to everyone; only admins create/update threads.
+  - Authenticated users can insert `mission_posts`; updates allowed only by author or admins.
+  - Automatic `last_activity_at` update via trigger on new posts.
+- **API usage**
+  - Missions page fetches threads by `mission_id` to power Trends cards.
+  - Dedicated route idea: `/hub/mission/:missionId` renders thread view with nested comments.
+  - Supabase client helpers: `getMissionThread(missionId)`, `listMissionPosts(threadId, { parentId })`.
+- **Moderation**
+  - Admin dashboard gets “Mission Threads” tab listing threads + queue of flagged posts.
+  - Posts flagged via existing report flow set `status = flagged` until reviewed.
+- **Seeding**
+  - Admin panel form pre-populates six mission slots with associated thread IDs to keep Trends consistent.
 
 ### 1. Terminal Help Command Enhancement ✅
 **Location**: `src/components/terminal/ClawNetTerminal.jsx`

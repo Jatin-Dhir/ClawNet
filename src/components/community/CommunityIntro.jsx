@@ -45,7 +45,6 @@ const CommunityIntro = ({ onSignInClick, triggerTransition }) => {
     ],
     []
   );
-
   const handleClick = () => {
     if (session) {
       triggerTransition(() => navigate('/hub'));
@@ -69,27 +68,36 @@ const CommunityIntro = ({ onSignInClick, triggerTransition }) => {
         >
           <div className="max-w-6xl mx-auto">
             <motion.div
-              className="cyber-card p-8 md:p-12 text-center overflow-hidden cursor-pointer"
-              onClick={handleClick}
+              className="cyber-card p-8 md:p-12 overflow-hidden"
               whileHover={{
                 y: -6,
                 scale: 1.01,
-                boxShadow: '0 0 40px rgba(0, 224, 255, 0.3), inset 0 0 32px rgba(0, 224, 255, 0.12)',
-                borderColor: 'rgba(0, 224, 255, 0.7)',
+                boxShadow: '0 0 32px rgba(0, 224, 255, 0.22), inset 0 0 26px rgba(0, 224, 255, 0.08)',
+                borderColor: 'rgba(0, 224, 255, 0.55)',
                 transition: { duration: 0.3 },
               }}
             >
-              <div className="absolute -inset-px bg-cyber-grid opacity-10 hover:opacity-20 transition-opacity duration-300" style={{ backgroundSize: '30px 30px' }} />
+              <div className="absolute -inset-px bg-cyber-grid opacity-10 transition-opacity duration-300" style={{ backgroundSize: '30px 30px' }} />
               <CommunityParticles />
-              <div className="relative z-10">
-                <h2 className="section-title mb-6">Join The ClawNet Community</h2>
-                <p className="font-exo text-lg md:text-xl text-gray-400 max-w-3xl mx-auto mb-8">
-                  A global hub for cybersecurity innovators. Share your tools. Exchange ideas. Redefine the future of defense — together.
-                </p>
-                <div className="group inline-flex items-center gap-3 font-orbitron font-bold text-lg text-cyber-cyan transition-colors hover:text-white">
-                  <span>{session ? 'Enter the Hub' : 'Authenticate and Engage'}</span>
-                  <ArrowRight className="transition-transform group-hover:translate-x-2" />
+              <div className="relative z-10 flex flex-col items-center gap-6 text-center lg:flex-row lg:items-center lg:justify-between lg:text-left">
+                <div className="max-w-2xl space-y-4">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-cyber-blue/40 bg-cyber-blue/10 px-4 py-1 font-orbitron text-xs uppercase tracking-[0.35em] text-cyber-cyan">
+                    Operate together
+                  </span>
+                  <h2 className="section-title mb-2">Join The ClawNet Community</h2>
+                  <p className="font-exo text-base md:text-lg text-gray-400">
+                    Share tradecraft, deploy in cohorts, and keep the Grid hardened. Access live telemetry, curated missions, and verified operatives inside one command mesh.
+                  </p>
                 </div>
+                <motion.button
+                  onClick={handleClick}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="inline-flex items-center justify-center gap-3 rounded-lg bg-gradient-to-r from-cyber-blue to-cyber-cyan px-6 py-3 font-orbitron text-sm uppercase tracking-[0.35em] text-cyber-darker shadow-lg shadow-cyber-blue/40"
+                >
+                  {session ? 'Enter the Hub' : 'Authenticate and Engage'}
+                  <ArrowRight className="h-4 w-4" />
+                </motion.button>
               </div>
             </motion.div>
           </div>
@@ -99,7 +107,7 @@ const CommunityIntro = ({ onSignInClick, triggerTransition }) => {
           initial={{ opacity: 0, y: 40 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ delay: 0.2, duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
-          className="mt-12 sm:mt-16 space-y-6"
+          className="mt-20 sm:mt-24 space-y-6"
         >
           <div className="relative overflow-hidden rounded-full border-2 border-cyber-blue/60 py-2">
             <div className="overflow-hidden">
