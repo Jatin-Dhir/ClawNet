@@ -104,85 +104,140 @@ const PostForm = ({ onClose, onPostCreated, editPost = null }) => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-cyber-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm p-4 sm:items-center"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.9, opacity: 0, y: 50 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.9, opacity: 0, y: 50 }}
-        className="relative cyber-card w-full max-w-2xl p-8"
-        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.95, y: 24 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 24 }}
+        transition={{ duration: 0.16 }}
+        className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-[#04070f]/95 p-5 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
       >
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-cyber-blue transition-colors">
-          <X size={24} />
+        <div className="absolute inset-0 pointer-events-none rounded-2xl border border-white/5" />
+        <button
+          onClick={onClose}
+          className="absolute right-3 top-3 rounded-full border border-white/10 bg-white/5 p-2 text-gray-300 transition-colors hover:border-cyber-blue/60 hover:text-white"
+          aria-label="Close create post"
+        >
+          <X size={18} />
         </button>
 
-        <h2 className="font-orbitron text-3xl font-bold text-center text-white mb-6">
-          {editPost ? 'Edit Post' : 'Create a New Post'}
-        </h2>
+        <header className="mb-5 space-y-2">
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 font-orbitron text-[10px] uppercase tracking-[0.35em] text-cyber-cyan">
+            Grid Broadcast
+          </span>
+          <h2 className="font-orbitron text-xl text-white">
+            {editPost ? 'Update your signal' : 'Share a new signal'}
+          </h2>
+          <p className="font-exo text-xs text-gray-400">
+            Drop tooling notes, research drops, or rally operatives.
+          </p>
+        </header>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <input
-            type="text"
-            placeholder="Post Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
-            required
-          />
-          <textarea
-            placeholder="Share your idea, tool, or discussion topic..."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all h-32 resize-none"
-            required
-          />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="font-orbitron text-[10px] uppercase tracking-[0.35em] text-gray-500">
+              Title
+            </label>
             <input
-              type="url"
-              placeholder="Link (e.g., GitHub, Website)"
-              value={link}
-              onChange={(e) => setLink(e.target.value)}
-              className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
+              type="text"
+              placeholder="Give the signal a clear title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 font-exo text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-2 focus:ring-cyber-blue/30 transition-all"
+              required
             />
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
-            >
-              <option value="discussion">Discussion</option>
-              <option value="tool">Tool Showcase</option>
-              <option value="research">Research</option>
-              <option value="project">Project</option>
-            </select>
           </div>
-          <div>
-            <label className="block text-sm font-exo text-gray-400 mb-2">Code Snippet (Optional)</label>
+
+          <div className="space-y-1.5">
+            <label className="font-orbitron text-[10px] uppercase tracking-[0.35em] text-gray-500">
+              Body
+            </label>
             <textarea
-              placeholder="Paste your code here (supports GitHub gists, code blocks, etc.)"
+              placeholder="Share context, findings, or collaboration asks…"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="h-24 w-full resize-none rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 font-exo text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-2 focus:ring-cyber-blue/30 transition-all"
+              required
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="font-orbitron text-[10px] uppercase tracking-[0.35em] text-gray-500">
+                External link
+              </label>
+              <input
+                type="url"
+                placeholder="https://github.com/…"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 font-exo text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-2 focus:ring-cyber-blue/30 transition-all"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-orbitron text-[10px] uppercase tracking-[0.35em] text-gray-500">
+                Category
+              </label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 font-exo text-sm text-white focus:border-cyber-blue focus:outline-none focus:ring-2 focus:ring-cyber-blue/30 transition-all"
+              >
+                <option value="discussion">Discussion</option>
+                <option value="tool">Tool Showcase</option>
+                <option value="research">Research</option>
+                <option value="project">Project</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[11px] text-gray-500 font-exo">
+              <label className="font-orbitron uppercase tracking-[0.3em]">Code Snippet</label>
+              <span>Optional • supports fenced code blocks</span>
+            </div>
+            <textarea
+              placeholder="Paste code, gists, or command snippets…"
               value={codeSnippet}
               onChange={(e) => setCodeSnippet(e.target.value)}
-              className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all h-40 resize-none font-mono text-sm"
+              className="h-20 w-full resize-none rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 font-mono text-sm text-gray-200 placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-2 focus:ring-cyber-blue/30 transition-all"
             />
-            <p className="mt-1 text-xs text-gray-500">You can paste code, GitHub links, or code snippets here</p>
           </div>
-          <input
-            type="text"
-            placeholder="Tags (comma-separated, e.g., AI, NetworkDefense)"
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            className="w-full px-4 py-3 bg-cyber-gray border border-cyber-blue/30 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyber-blue transition-all"
-          />
+
+          <div className="space-y-1.5">
+            <label className="font-orbitron text-[10px] uppercase tracking-[0.35em] text-gray-500">
+              Tags
+            </label>
+            <input
+              type="text"
+              placeholder="comma-separated (e.g. blue-team, detection, automate)"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 font-exo text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-2 focus:ring-cyber-blue/30 transition-all"
+            />
+          </div>
 
           <motion.button
             type="submit"
             disabled={loading}
-            whileHover={{ scale: 1.03, boxShadow: '0 0 25px rgba(0, 224, 255, 0.5)' }}
-            whileTap={{ scale: 0.98 }}
-            className="w-full flex items-center justify-center gap-2 px-8 py-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker font-orbitron font-bold rounded-md transition-shadow duration-300 disabled:opacity-50"
+            whileHover={{ scale: loading ? 1 : 1.02 }}
+            whileTap={{ scale: loading ? 1 : 0.98 }}
+            className="mt-1 w-full rounded-lg bg-gradient-to-r from-cyber-blue via-cyber-cyan to-white px-5 py-2.5 font-orbitron text-[10px] uppercase tracking-[0.35em] text-cyber-darker shadow-lg shadow-cyber-blue/40 transition-all disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? <Loader className="animate-spin" size={20} /> : <><Send size={18} /> {editPost ? 'Update Post' : 'Post to The Grid'}</>}
+            {loading ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader className="h-4 w-4 animate-spin" />
+                Transmitting…
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-2">
+                <Send size={16} />
+                {editPost ? 'Update Post' : 'Transmit to Grid'}
+              </span>
+            )}
           </motion.button>
         </form>
       </motion.div>

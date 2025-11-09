@@ -9,9 +9,6 @@ import {
   ShieldCheck,
   Compass,
   Clock3,
-  Zap,
-  Medal,
-  Sparkles,
 } from 'lucide-react';
 
 const missions = [

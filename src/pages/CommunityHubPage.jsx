@@ -351,13 +351,15 @@ const missionThreadsShowcase = [
 
           <div className="grid gap-4 md:grid-cols-3">
             {missionThreadsShowcase.map((thread) => (
-              <motion.div
+              <motion.button
                 key={thread.id}
+                type="button"
+                onClick={() => navigate(`/hub/mission/${thread.id}`)}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.4 }}
-                className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4"
+                className="text-left rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4 transition-shadow hover:shadow-lg hover:shadow-cyber-blue/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
               >
                 <div className="flex items-center justify-between">
                   <div>
@@ -374,15 +376,11 @@ const missionThreadsShowcase = [
                 <p className="font-exo text-sm text-gray-300 leading-relaxed">{thread.summary}</p>
                 <div className="flex items-center justify-between text-xs font-exo text-gray-500">
                   <span>{thread.activity}</span>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/missions')}
-                    className="text-cyber-cyan hover:text-white transition-colors uppercase tracking-[0.3em]"
-                  >
-                    View Mission
-                  </button>
+                  <span className="text-cyber-cyan transition-colors group-hover:text-white uppercase tracking-[0.3em]">
+                    Open Thread
+                  </span>
                 </div>
-              </motion.div>
+              </motion.button>
             ))}
           </div>
 

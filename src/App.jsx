@@ -21,6 +21,7 @@ import ServiceDetailPage from './pages/ServiceDetailPage';
 import AdminDashboard from './pages/AdminDashboard';
 import AboutPage from './pages/AboutPage';
 import MissionsPage from './pages/MissionsPage';
+import MissionThreadPage from './pages/MissionThreadPage';
 
 const Layout = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -158,6 +159,7 @@ function App() {
                 <Route path="cyber-operations" element={<CyberOperationsPage />} />
                 <Route path="services/:serviceId" element={<ServiceDetailPage />} />
                 <Route path="missions" element={<MissionsPage />} />
+                <Route path="hub/mission/:missionId" element={<MissionThreadPage />} />
                 <Route path="admin" element={<AdminDashboard />} />
                 <Route path="tools/:toolId" element={<ToolDetailPage />} />
                 <Route path="research/:postId" element={<ResearchPage />} />

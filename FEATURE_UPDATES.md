@@ -9,6 +9,8 @@
 - Landing page community hero temporarily retired while hub-first onboarding is defined.
 - Reward tokens introduced on mission detail page (XP, badge, bonus) with shared component + iconography.
 - Supabase migration drafted for `missions_featured` table (slot management, color accents, cover images seeded).
+- New `/hub/mission/:missionId` route renders curated mission discussions; Trends cards deep-link into these threads.
+- Mission thread page provides fallback data when Supabase tables are absent, so previews still load.
 - Commit pushed (`Refine missions flow and community hub`) – repo synced on main.
 
 ### 🚧 Planned Next Steps
