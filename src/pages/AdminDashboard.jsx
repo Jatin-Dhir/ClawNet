@@ -137,26 +137,53 @@ const AdminDashboard = () => {
     });
   }, [serviceRequests]);
 
-  // Check if user is admin - SIMPLE VERSION
+  // Verify admin access against Supabase profile (with fallback email allow list)
   useEffect(() => {
-    if (!session) {
-      console.log('AdminDashboard: No session found');
-      setLoading(false);
-      return;
-    }
+    const verifyAdmin = async () => {
+      if (!session?.user) {
+        console.log('AdminDashboard: No session found');
+        setIsAuthorized(false);
+        setLoading(false);
+        return;
+      }
 
-    const userEmail = session.user.email?.trim().toLowerCase();
-    const isAdmin = userEmail && FALLBACK_ADMIN_EMAILS.includes(userEmail);
-    
-    console.log('AdminDashboard Check:', {
-      userEmail,
-      isAdmin,
-      allowedEmails: FALLBACK_ADMIN_EMAILS
-    });
-    
-    setIsAuthorized(isAdmin);
-    setLoading(false);
-  }, [session]);
+      const userEmail = session.user.email?.trim().toLowerCase();
+      if (userEmail && FALLBACK_ADMIN_EMAILS.includes(userEmail)) {
+        console.log('AdminDashboard: matched fallback admin email', { userEmail });
+        setIsAuthorized(true);
+        setLoading(false);
+        return;
+      }
+
+      if (profile && typeof profile.is_admin === 'boolean') {
+        console.log('AdminDashboard: using profile flag', { is_admin: profile.is_admin });
+        setIsAuthorized(profile.is_admin === true);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', session.user.id)
+          .single();
+
+        if (error) throw error;
+
+        const isAdmin = data?.is_admin === true;
+        console.log('AdminDashboard: fetched admin flag', { is_admin: isAdmin });
+        setIsAuthorized(isAdmin);
+      } catch (error) {
+        console.error('AdminDashboard: error verifying admin status', error);
+        setIsAuthorized(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    verifyAdmin();
+  }, [session, profile]);
 
   useEffect(() => {
     if (!isAuthorized) return;

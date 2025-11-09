@@ -24,23 +24,65 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    if (session?.user) {
-      const fetchProfile = async () => {
+    if (!session?.user) {
+      setProfile(null);
+      return;
+    }
+
+    const fetchOrCreateProfile = async () => {
+      try {
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
-        if (error) {
-          console.error('Error fetching profile:', error);
-        } else {
+
+        if (!error && data) {
           setProfile(data);
+          return;
         }
-      };
-      fetchProfile();
-    } else {
-      setProfile(null);
-    }
+
+        if (error && error.code !== 'PGRST116') {
+          throw error;
+        }
+
+        const metadata = session.user.user_metadata || {};
+        const email = session.user.email?.toLowerCase() || '';
+        const usernameFromEmail = email ? email.split('@')[0] : null;
+        const rawUsername =
+          metadata.username ||
+          metadata.user_name ||
+          metadata.preferred_username ||
+          metadata.full_name?.replace(/\s+/g, '') ||
+          usernameFromEmail ||
+          `user-${session.user.id.slice(0, 6)}`;
+        const normalizedUsername =
+          rawUsername && rawUsername.length >= 3 ? rawUsername : `user-${session.user.id.slice(0, 6)}`;
+
+        const defaultProfile = {
+          id: session.user.id,
+          username: normalizedUsername,
+          avatar_url: metadata.avatar_url || metadata.picture || null,
+        };
+
+        const { data: insertData, error: insertError } = await supabase
+          .from('profiles')
+          .insert(defaultProfile)
+          .select('*')
+          .single();
+
+        if (insertError) {
+          throw insertError;
+        }
+
+        setProfile(insertData);
+      } catch (fetchError) {
+        console.error('Error ensuring profile:', fetchError);
+        setProfile(null);
+      }
+    };
+
+    fetchOrCreateProfile();
   }, [session]);
 
   const value = {

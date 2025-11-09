@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import PostCard from '../components/community/PostCard';
 import PostForm from '../components/community/PostForm';
-import { Plus, MessageSquare, Wrench, BrainCircuit, Rocket, Filter, Search } from 'lucide-react';
+import { Plus, MessageSquare, Wrench, BrainCircuit, Rocket, Filter, Search, Ban, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const CommunityHubPage = () => {
@@ -16,6 +15,9 @@ const CommunityHubPage = () => {
   const [editingPost, setEditingPost] = useState(null);
   const [filter, setFilter] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
+  const [checkingBan, setCheckingBan] = useState(true);
+  const [isBanned, setIsBanned] = useState(false);
+  const [banInfo, setBanInfo] = useState(null);
 
   const tabs = [
     { name: 'All', icon: Filter },
@@ -62,8 +64,62 @@ const CommunityHubPage = () => {
   };
 
   useEffect(() => {
+    const checkBanStatus = async () => {
+      if (!profile?.id) {
+        setIsBanned(false);
+        setBanInfo(null);
+        setCheckingBan(false);
+        return;
+      }
+
+      setCheckingBan(true);
+
+      try {
+        const { data, error } = await supabase
+          .from('banned_users')
+          .select('reason, banned_at, admin_profiles:admin_id(username)')
+          .eq('user_id', profile.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (error) {
+          // maybeSingle only throws when more than one row matches
+          if (error.code !== 'PGRST116') {
+            throw error;
+          }
+        }
+
+        if (data) {
+          setIsBanned(true);
+          setBanInfo(data);
+        } else {
+          setIsBanned(false);
+          setBanInfo(null);
+        }
+      } catch (error) {
+        console.error('Error checking ban status:', error);
+        toast.error('Unable to verify your hub access. Please try again.');
+        setIsBanned(false);
+        setBanInfo(null);
+      } finally {
+        setCheckingBan(false);
+      }
+    };
+
+    checkBanStatus();
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (checkingBan) return;
+
+    if (isBanned) {
+      setPosts([]);
+      setLoading(false);
+      return;
+    }
+
     fetchPosts();
-  }, [filter]);
+  }, [filter, checkingBan, isBanned]);
 
   const handlePostCreated = () => {
     fetchPosts();
@@ -93,6 +149,72 @@ const CommunityHubPage = () => {
       return haystack.includes(query);
     });
   }, [posts, searchTerm]);
+
+  if (checkingBan) {
+    return (
+      <div className="min-h-screen pt-24 pb-12 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-gray-400">
+          <Loader className="w-10 h-10 animate-spin text-cyber-blue" />
+          <p className="font-exo text-sm uppercase tracking-[0.3em]">AUTHORIZING ACCESS…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isBanned) {
+    return (
+      <div className="min-h-screen pt-24 pb-12 flex items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-xl w-full cyber-card text-center space-y-6"
+        >
+          <div className="flex justify-center">
+            <div className="w-20 h-20 rounded-full bg-red-500/10 border border-red-500/40 flex items-center justify-center">
+              <Ban className="w-10 h-10 text-red-400" />
+            </div>
+          </div>
+          <div className="space-y-3">
+            <h1 className="font-orbitron text-3xl text-white tracking-wide">Access Restricted</h1>
+            <p className="font-exo text-gray-400 leading-relaxed">
+              Your account is currently banned from the Community Hub. You won’t be able to view or
+              interact with content until an administrator lifts the ban.
+            </p>
+          </div>
+          {banInfo?.reason && (
+            <div className="bg-red-500/5 border border-red-500/30 rounded-lg p-4 text-left">
+              <p className="font-exo text-sm text-red-300 uppercase tracking-[0.2em] mb-1">Reason</p>
+              <p className="font-exo text-gray-300">{banInfo.reason}</p>
+            </div>
+          )}
+          <div className="space-y-2 font-exo text-sm text-gray-500">
+            {banInfo?.banned_at && (
+              <p>
+                Banned on{' '}
+                <span className="text-gray-300">
+                  {new Date(banInfo.banned_at).toLocaleString()}
+                </span>
+              </p>
+            )}
+            {banInfo?.admin_profiles?.username && (
+              <p>
+                Issued by{' '}
+                <span className="text-gray-300">{banInfo.admin_profiles.username}</span>
+              </p>
+            )}
+          </div>
+          <div className="pt-2">
+            <a
+              href="mailto:team@projectclawnet.online"
+              className="inline-flex items-center gap-2 px-5 py-3 bg-cyber-blue/20 border border-cyber-blue/40 rounded-md text-cyber-cyan font-orbitron text-sm tracking-widest hover:bg-cyber-blue/30 transition-colors"
+            >
+              Contact Support
+            </a>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen pt-24 pb-12">
