@@ -62,7 +62,7 @@ const Hero = ({ onJoinClick }) => {
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10"
         >
           <motion.a
-            href="#tools"
+            href="#explore-grid"
             whileHover={{ 
               scale: 1.05, 
               boxShadow: '0 0 30px rgba(0, 224, 255, 0.6)',
@@ -72,10 +72,10 @@ const Hero = ({ onJoinClick }) => {
             className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 bg-gradient-to-r from-cyber-blue to-cyber-cyan text-cyber-darker font-orbitron font-bold rounded-md transition-all duration-300"
             onClick={(e) => {
               e.preventDefault();
-              document.querySelector('#tools')?.scrollIntoView({ behavior: 'smooth' });
+              document.querySelector('#explore-grid')?.scrollIntoView({ behavior: 'smooth' });
             }}
           >
-            Explore The Tech
+            Start Guided Tour
             <motion.div
               animate={{ x: [0, 5, 0] }}
               transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}

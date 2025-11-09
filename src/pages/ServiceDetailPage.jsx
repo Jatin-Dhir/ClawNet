@@ -232,15 +232,16 @@ const ServiceDetailPage = () => {
           >
             <Link
               to="/cyber-operations"
-              className="inline-flex items-center gap-2 mb-8 group text-gray-500 hover:text-white transition-all duration-300"
+              className="inline-flex items-center gap-2 mb-6 sm:mb-8 rounded-full px-3 py-2 bg-cyber-black/70 border border-white/10 text-gray-400 hover:text-white hover:border-cyber-blue/60 transition-all duration-300 touch-manipulation"
+              aria-label="Back to services"
             >
               <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-              <span className="font-exo text-sm uppercase tracking-wider">Back</span>
+              <span className="font-exo text-xs sm:text-sm uppercase tracking-wider">Back</span>
             </Link>
 
-            <div className="flex items-start gap-6 mb-8">
-              <div className={`p-5 bg-gradient-to-br ${service.gradient} rounded-xl flex-shrink-0`}>
-                <Icon className="w-12 h-12 text-white" />
+            <div className="flex flex-col md:flex-row md:items-start gap-5 md:gap-6 mb-8">
+              <div className={`p-4 sm:p-5 bg-gradient-to-br ${service.gradient} rounded-xl flex-shrink-0 w-fit`}>
+                <Icon className="w-10 h-10 sm:w-12 sm:h-12 text-white" />
               </div>
               <div className="flex-1">
                 {service.badge && (
@@ -251,24 +252,24 @@ const ServiceDetailPage = () => {
                 <div className="text-xs font-exo text-cyber-blue uppercase tracking-[0.3em] mb-3">
                   {service.category}
                 </div>
-                <h1 className="font-orbitron text-4xl md:text-5xl lg:text-6xl font-black leading-tight mb-4">
+                <h1 className="font-orbitron text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black leading-tight mb-4">
                   {service.title}
                 </h1>
-                <p className="font-exo text-xl text-gray-400 leading-relaxed max-w-3xl">
+                <p className="font-exo text-base sm:text-lg md:text-xl text-gray-400 leading-relaxed max-w-3xl">
                   {service.description}
                 </p>
               </div>
             </div>
 
             {/* Quick Info */}
-            <div className="flex flex-wrap gap-6 items-center">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-4 sm:gap-6 items-start sm:items-center">
               <div className="flex items-center gap-3">
                 <Clock className="w-5 h-5 text-cyber-blue" />
-                <span className="font-exo text-gray-300"><strong>Timeline:</strong> {service.timeline}</span>
+                <span className="font-exo text-gray-300 text-sm sm:text-base"><strong>Timeline:</strong> {service.timeline}</span>
               </div>
               <div className="flex items-center gap-3">
                 <BarChart3 className="w-5 h-5 text-cyber-cyan" />
-                <span className="font-exo text-gray-300"><strong>Pricing:</strong> {service.pricing}</span>
+                <span className="font-exo text-gray-300 text-sm sm:text-base"><strong>Pricing:</strong> {service.pricing}</span>
               </div>
             </div>
           </motion.div>
@@ -362,14 +363,14 @@ const ServiceDetailPage = () => {
                   initial={{ opacity: 0, x: -20 }}
                   animate={isInView ? { opacity: 1, x: 0 } : {}}
                   transition={{ delay: 0.6 + index * 0.1 }}
-                  className="flex gap-6 p-6 bg-white/5 border border-white/10 rounded-xl hover:border-cyber-blue/50 transition-all"
+                  className="flex flex-col sm:flex-row gap-4 sm:gap-6 p-5 sm:p-6 bg-white/5 border border-white/10 rounded-xl hover:border-cyber-blue/50 transition-all"
                 >
                   <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-cyber-blue to-cyber-cyan flex items-center justify-center font-orbitron font-bold text-white text-lg">
                     {index + 1}
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-orbitron text-xl font-bold text-white mb-2">{phase.phase}</h3>
-                    <p className="font-exo text-gray-400">{phase.desc}</p>
+                    <h3 className="font-orbitron text-lg sm:text-xl font-bold text-white mb-2">{phase.phase}</h3>
+                    <p className="font-exo text-sm sm:text-base text-gray-400 leading-relaxed">{phase.desc}</p>
                   </div>
                 </motion.div>
               ))}
@@ -383,11 +384,11 @@ const ServiceDetailPage = () => {
             transition={{ duration: 0.6, delay: 0.7 }}
             className="text-center"
           >
-            <div className="p-12 bg-gradient-to-br from-white/5 to-white/0 border border-white/10 rounded-2xl">
-              <h2 className="font-orbitron text-3xl md:text-4xl font-bold mb-4">
+            <div className="p-8 sm:p-10 md:p-12 bg-gradient-to-br from-white/5 to-white/0 border border-white/10 rounded-2xl">
+              <h2 className="font-orbitron text-2xl sm:text-3xl md:text-4xl font-bold mb-4">
                 Ready to Get Started?
               </h2>
-              <p className="font-exo text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
+              <p className="font-exo text-base sm:text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
                 Contact our team to discuss your security needs
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">

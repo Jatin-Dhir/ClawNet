@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, Loader, Mail, Github, Phone, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -17,6 +17,12 @@ const AuthModal = ({ onClose }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { signIn, signUp } = useAuth();
+  const rememberMeDefault = useMemo(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem('clawnet_remember_me');
+    return stored !== 'false';
+  }, []);
+  const [rememberMe, setRememberMe] = useState(rememberMeDefault);
 
   const handleForgotPassword = async (e) => {
     e.preventDefault();
@@ -49,6 +55,10 @@ const AuthModal = ({ onClose }) => {
 
   const handleOAuthSignIn = async (provider) => {
     try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('clawnet_remember_me', rememberMe ? 'true' : 'false');
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: provider,
         options: {
@@ -87,6 +97,10 @@ const AuthModal = ({ onClose }) => {
         return;
       }
 
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('clawnet_remember_me', rememberMe ? 'true' : 'false');
+      }
+
       const { error } = await signIn({ email: sanitizedEmail, password: sanitizedPassword });
       if (error) {
         toast.error(error.message);
@@ -114,6 +128,10 @@ const AuthModal = ({ onClose }) => {
         toast.error(passwordValidation.errors[0] || 'Password does not meet requirements.');
         setLoading(false);
         return;
+      }
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('clawnet_remember_me', rememberMe ? 'true' : 'false');
       }
 
       // Rate limiting check
@@ -285,8 +303,18 @@ const AuthModal = ({ onClose }) => {
                 </div>
               )}
 
-              {isLogin && (
-                <div className="flex justify-end">
+              <div className="flex items-center justify-between gap-4">
+                <label className="flex items-center gap-2 text-sm font-exo text-gray-400 select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={() => setRememberMe((prev) => !prev)}
+                    className="h-4 w-4 rounded border border-cyber-blue/40 bg-cyber-gray text-cyber-blue focus:ring-cyber-cyan"
+                  />
+                  Remember me
+                </label>
+
+                {isLogin && (
                   <button
                     type="button"
                     onClick={() => setIsForgotPassword(true)}
@@ -294,8 +322,8 @@ const AuthModal = ({ onClose }) => {
                   >
                     Forgot password?
                   </button>
-                </div>
-              )}
+                )}
+              </div>
 
               <motion.button
                 type="submit"

@@ -163,18 +163,19 @@ const CyberOperationsPage = () => {
         {/* Hero Section */}
         <section className="relative min-h-[60vh] flex items-center justify-center border-b border-white/10">
           <div className="absolute inset-0 bg-gradient-to-b from-cyber-blue/5 via-transparent to-transparent" />
-          
-          <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-20 py-32 text-center relative z-10">
+
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-20 py-24 md:py-32 text-center relative z-10">
             {/* Back Navigation */}
             <motion.div
               initial={{ opacity: 0, x: -30 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6 }}
-              className="absolute top-8 left-6 md:left-12"
+              className="absolute top-6 left-4 sm:left-6 md:left-12"
             >
               <Link
                 to="/"
-                className="inline-flex items-center gap-2 group text-gray-500 hover:text-white transition-all duration-300"
+                className="inline-flex items-center gap-2 rounded-full px-3 py-2 bg-cyber-black/70 border border-white/10 text-gray-400 hover:text-white hover:border-cyber-blue/60 transition-all duration-300 touch-manipulation"
+                aria-label="Back to home"
               >
                 <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="font-exo text-xs uppercase tracking-wider">Back</span>
@@ -187,22 +188,22 @@ const CyberOperationsPage = () => {
               transition={{ duration: 0.8 }}
               className="space-y-8"
             >
-              <h1 className="font-orbitron text-5xl md:text-7xl lg:text-8xl font-black leading-tight">
+              <h1 className="font-orbitron text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black leading-tight">
                 <span className="block bg-gradient-to-r from-cyber-blue via-cyber-cyan to-white bg-clip-text text-transparent">
                   CYBER OPERATIONS
                 </span>
-                <span className="block text-3xl md:text-4xl lg:text-5xl mt-4 text-gray-400 font-normal">
+                <span className="block text-2xl sm:text-3xl md:text-4xl lg:text-5xl mt-4 text-gray-400 font-normal">
                   Professional Security Services
                 </span>
               </h1>
 
-              <p className="font-exo text-lg md:text-xl text-gray-400 max-w-3xl mx-auto leading-relaxed">
+              <p className="font-exo text-base sm:text-lg md:text-xl text-gray-400 max-w-3xl mx-auto leading-relaxed px-2 sm:px-0">
                 Comprehensive cybersecurity solutions designed to protect your digital infrastructure. 
                 Our certified team delivers enterprise-grade security assessments and custom solutions.
               </p>
 
               {/* Stats Row */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-16 max-w-4xl mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5 sm:gap-6 mt-12 md:mt-16 max-w-4xl mx-auto">
                 {stats.map((stat, index) => (
                   <motion.div
                     key={stat.label}
@@ -212,8 +213,8 @@ const CyberOperationsPage = () => {
                     whileHover={{ scale: 1.05, y: -5 }}
                     className="relative group"
                   >
-                    <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent rounded-lg blur-lg group-hover:blur-xl transition-all duration-300" />
-                    <div className="relative p-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg hover:border-cyber-blue/50 transition-all duration-300">
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/5 to-transparent rounded-lg blur-lg group-hover:blur-xl transition-all duration-300" />
+                    <div className="relative p-5 sm:p-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg hover:border-cyber-blue/50 transition-all duration-300">
                       <stat.icon className={`w-8 h-8 ${stat.color} mx-auto mb-3`} />
                       <div className="font-orbitron text-3xl md:text-4xl font-black text-white mb-1">
                         {stat.value}
@@ -249,7 +250,7 @@ const CyberOperationsPage = () => {
               </p>
             </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
               {services.map((service, index) => {
                 const Icon = service.icon;
                 const isHovered = hoveredCard === index;
@@ -270,23 +271,23 @@ const CyberOperationsPage = () => {
                   >
                     {/* Glow Effect */}
                     <div
-                      className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-50 transition-opacity duration-500 blur-2xl"
+                      className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-50 transition-opacity duration-500 blur-2xl"
                       style={{ backgroundColor: service.glow }}
                     />
 
                     {/* Card */}
-                    <div className="relative h-full p-8 bg-gradient-to-br from-white/5 via-white/5 to-white/0 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden transition-all duration-500 group-hover:border-white/20"
+                    <div className="relative h-full p-6 sm:p-7 lg:p-8 bg-gradient-to-br from-white/5 via-white/5 to-white/0 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden transition-all duration-500 group-hover:border-white/20"
                       style={{
                         boxShadow: isHovered ? `0 10px 30px ${service.glow}` : 'none'
                       }}
                     >
                       {/* Background Gradient */}
-                      <div className={`absolute inset-0 bg-gradient-to-br ${service.gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-500 pointer-events-none`} />
+                      <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${service.gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-500`} />
 
                       {/* Badge */}
                       {service.badge && (
                         <div className="absolute top-4 right-4">
-                          <span className="px-3 py-1 text-xs font-exo font-bold uppercase tracking-wider bg-gradient-to-r from-cyber-blue to-cyber-cyan text-white rounded-full">
+                          <span className="px-3 py-1 text-xs font-exo font-bold uppercase tracking-wider bg-gradient-to-r from-cyber-blue to-cyber-cyan text-white rounded-full shadow-lg shadow-cyber-blue/20">
                             {service.badge}
                           </span>
                         </div>
@@ -298,9 +299,9 @@ const CyberOperationsPage = () => {
                           scale: 1.05
                         } : {}}
                         transition={{ duration: 0.3 }}
-                        className={`relative mb-6 w-16 h-16 rounded-xl bg-gradient-to-br ${service.gradient} flex items-center justify-center`}
+                        className={`relative mb-6 w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-gradient-to-br ${service.gradient} flex items-center justify-center`}
                       >
-                        <Icon className="w-8 h-8 text-white" />
+                        <Icon className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
                       </motion.div>
 
                       {/* Category */}
@@ -316,12 +317,12 @@ const CyberOperationsPage = () => {
                       </h3>
 
                       {/* Description */}
-                      <p className="font-exo text-sm text-gray-400 mb-6 leading-relaxed line-clamp-3">
+                      <p className="font-exo text-sm text-gray-400 mb-6 leading-relaxed">
                         {service.description}
                       </p>
 
                       {/* Features List */}
-                      <div className="space-y-2 mb-6">
+                      <div className="space-y-2.5 mb-6">
                         {service.features.slice(0, 3).map((feature, idx) => (
                           <motion.div
                             key={idx}
@@ -337,16 +338,14 @@ const CyberOperationsPage = () => {
                       </div>
 
                       {/* CTA */}
-                      <div className="relative z-10">
-                        <motion.div whileHover={{ x: 5 }}>
-                          <Link
-                            to={`/services/${service.serviceId}`}
-                            className="inline-flex items-center gap-2 text-cyber-blue hover:text-cyber-cyan transition-colors group/cta font-exo text-sm font-semibold uppercase tracking-wider cursor-pointer"
-                          >
-                            <span>Learn More</span>
-                            <ArrowRight className="w-4 h-4 group-hover/cta:translate-x-1 transition-transform" />
-                          </Link>
-                        </motion.div>
+                      <div className="relative z-10 mt-auto">
+                        <Link
+                          to={`/services/${service.serviceId}`}
+                          className="inline-flex w-full items-center justify-center gap-2 px-4 py-3 rounded-lg border border-cyber-blue/50 text-cyber-blue hover:text-white hover:border-cyber-cyan hover:bg-cyber-blue/10 font-orbitron text-xs sm:text-sm uppercase tracking-[0.2em] transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-cyber-cyan"
+                        >
+                          Learn More
+                          <ArrowRight className="w-4 h-4" />
+                        </Link>
                       </div>
                     </div>
                   </motion.div>

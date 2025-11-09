@@ -1,6 +1,7 @@
 import React from 'react';
 import { useOutletContext } from 'react-router-dom';
 import Hero from '../components/Hero';
+import ExploreNavigator from '../components/ExploreNavigator';
 import About from '../components/About';
 import TeamPreview from '../components/TeamPreview';
 import Products from '../components/Products';
@@ -14,6 +15,7 @@ const LandingPage = () => {
   return (
     <>
       <Hero onJoinClick={() => triggerTransition(onSignInClick)} />
+      <ExploreNavigator onSignInClick={onSignInClick} triggerTransition={triggerTransition} />
       <About />
       <TeamPreview />
       <Products />

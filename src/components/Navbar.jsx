@@ -90,6 +90,8 @@ const Navbar = ({ onSignInClick }) => {
     }
   };
 
+  const displayName = profile?.username || session?.user?.user_metadata?.full_name || session?.user?.email || 'User';
+
   return (
     <>
       <AnimatePresence>
@@ -131,7 +133,9 @@ const Navbar = ({ onSignInClick }) => {
             <div className="flex items-center gap-4">
               {session ? (
                 <div className="hidden md:flex items-center gap-4">
-                  <span className="font-exo text-sm text-gray-300">Welcome, <span className="font-bold text-cyber-cyan">{profile?.username || 'User'}</span></span>
+                  <span className="font-exo text-sm text-gray-300">Welcome,&nbsp;
+                    <span className="font-bold text-cyber-cyan">{displayName}</span>
+                  </span>
                   {isAdmin && (
                     <Link to="/admin" className="no-quantum-transform">
                       <motion.button
@@ -284,7 +288,7 @@ const Navbar = ({ onSignInClick }) => {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-exo text-xs text-gray-500 mb-0.5">Welcome back</p>
-                          <p className="font-exo text-sm text-white truncate font-medium">{profile?.username || 'User'}</p>
+                          <p className="font-exo text-sm text-white truncate font-medium">{displayName}</p>
                         </div>
                       </div>
                     </motion.li>
