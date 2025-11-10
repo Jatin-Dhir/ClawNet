@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import SystemShutdown from './transitions/SystemShutdown';
 
+const DEFAULT_AVATAR_URL = 'https://api.dicebear.com/7.x/bottts/svg?seed=ClawNetOperative';
+
 const Navbar = ({ onSignInClick }) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -117,7 +119,7 @@ const Navbar = ({ onSignInClick }) => {
   const avatarUrl =
     profile?.avatar_url ||
     session?.user?.user_metadata?.avatar_url ||
-    null;
+    DEFAULT_AVATAR_URL;
   const avatarInitial = (displayName || 'O').charAt(0).toUpperCase();
   const profilePath = profile?.username ? `/profile/${profile.username}` : '/profile';
 
@@ -192,11 +194,7 @@ const Navbar = ({ onSignInClick }) => {
                       className="flex items-center gap-3 rounded-full border border-white/15 bg-white/5 pl-1 pr-3 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan/70 focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
                     >
                       <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-black/60">
-                        {avatarUrl ? (
-                          <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
-                        ) : (
-                          <span className="font-orbitron text-sm text-white">{avatarInitial}</span>
-                        )}
+                        <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
                       </span>
                       <div className="hidden sm:block text-left">
                         <p className="text-[10px] font-exo uppercase tracking-[0.3em] text-gray-400">Operative</p>

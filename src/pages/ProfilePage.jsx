@@ -30,6 +30,8 @@ import { useAuth } from '../contexts/AuthContext';
 import RewardToken from '../components/RewardToken';
 import toast from 'react-hot-toast';
 
+const DEFAULT_AVATAR_URL = 'https://api.dicebear.com/7.x/bottts/svg?seed=ClawNetOperative';
+
 const STORAGE_BUCKET = 'profile-media';
 
 const DEFAULT_PREFERENCES = {
@@ -76,7 +78,7 @@ const BADGE_LIBRARY = {
 const FALLBACK_PROFILE = (username) => ({
   username: username ?? 'operative',
   display_name: 'ClawNet Operative',
-  avatar_url: null,
+  avatar_url: DEFAULT_AVATAR_URL,
   bio: 'Cybersecurity operative keeping ClawNet safe.',
   location: 'Unknown Grid Node',
   website: null,
@@ -311,6 +313,7 @@ const ProfilePage = () => {
         if (!cancelled) {
           setProfileData({
             ...data,
+            avatar_url: data.avatar_url || DEFAULT_AVATAR_URL,
             badges: resolveBadges(data.badges),
             preferences: { ...DEFAULT_PREFERENCES, ...(data.preferences ?? {}) },
           });
@@ -786,21 +789,11 @@ const ProfilePage = () => {
                 <div className="relative flex flex-col gap-8 p-6 sm:p-10 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-6">
                     <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
-                      {profileData.avatar_url ? (
-                        <img
-                          src={profileData.avatar_url}
-                          alt={profileData.display_name ?? profileData.username}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-cyber-blue/40 to-cyber-purple/40">
-                          <span className="font-orbitron text-3xl text-white">
-                            {(profileData.display_name ?? profileData.username ?? '?')
-                              .slice(0, 1)
-                              .toUpperCase()}
-                          </span>
-                        </div>
-                      )}
+                      <img
+                        src={profileData.avatar_url || DEFAULT_AVATAR_URL}
+                        alt={profileData.display_name ?? profileData.username}
+                        className="h-full w-full object-cover"
+                      />
                       <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-cyber-cyan/40 bg-cyber-cyan/20 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.35em] text-cyber-cyan">
                         Level {xpSummary.level}
                       </div>

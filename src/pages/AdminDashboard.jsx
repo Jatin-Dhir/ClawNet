@@ -30,6 +30,9 @@ import {
   Star,
   Send,
   Lock,
+  Target,
+  Plus,
+  Save,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
@@ -42,6 +45,100 @@ const FALLBACK_ADMIN_EMAILS = [
   'dhirjatin@icloud.com',
   'dhirjatin@outlook.com',
 ];
+
+const createBlankMissionForm = () => ({
+  id: null,
+  slot_type: 'seasonal',
+  slot_position: '1',
+  title: '',
+  slug: '',
+  band: '',
+  category: '',
+  difficulty: '',
+  difficulty_color: '#00e0ff',
+  accent_glow: '',
+  status: '',
+  deadline: '',
+  summary: '',
+  objectives: '',
+  requirements: '',
+  hints: '',
+  rewards_xp: '0',
+  rewards_badge: '',
+  rewards_bonus: '',
+  thread_id: null,
+  thread_locked: false,
+  thread_title: '',
+});
+
+const MISSION_SLOT_ORDER = {
+  seasonal: 0,
+  weekly: 1,
+  daily: 2,
+  quick: 3,
+};
+
+const normalizeMissionList = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (error) {
+      // fall through to string splitting
+    }
+    return value
+      .split(/\n+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === 'object') {
+    return Object.values(value)
+      .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const listToTextarea = (value) => normalizeMissionList(value).join('\n');
+
+const textareaToList = (value) =>
+  value
+    .split(/\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const mapMissionToFormState = (mission) => {
+  if (!mission) {
+    return createBlankMissionForm();
+  }
+
+  return {
+    id: mission.id ?? null,
+    slot_type: mission.slot_type ?? 'seasonal',
+    slot_position: String(mission.slot_position ?? 1),
+    title: mission.title ?? '',
+    slug: mission.slug ?? '',
+    band: mission.band ?? '',
+    category: mission.category ?? '',
+    difficulty: mission.difficulty ?? '',
+    difficulty_color: mission.difficulty_color ?? '#00e0ff',
+    accent_glow: mission.accent_glow ?? '',
+    status: mission.status ?? '',
+    deadline: mission.deadline ? new Date(mission.deadline).toISOString().slice(0, 16) : '',
+    summary: mission.summary ?? '',
+    objectives: listToTextarea(mission.objectives),
+    requirements: listToTextarea(mission.requirements),
+    hints: listToTextarea(mission.hints),
+    rewards_xp: String(mission.rewards_xp ?? 0),
+    rewards_badge: mission.rewards_badge ?? '',
+    rewards_bonus: mission.rewards_bonus ?? '',
+    thread_id: mission.thread?.id ?? null,
+    thread_locked: mission.thread?.is_locked ?? false,
+    thread_title: mission.thread?.title ?? '',
+  };
+};
 
 const AdminDashboard = () => {
   const { session, profile } = useAuth();
@@ -84,6 +181,17 @@ const AdminDashboard = () => {
   });
   const [missionThreads, setMissionThreads] = useState([]);
   const [missionThreadsLoading, setMissionThreadsLoading] = useState(false);
+  const [missionsAdmin, setMissionsAdmin] = useState([]);
+  const [missionsAdminLoading, setMissionsAdminLoading] = useState(false);
+  const [missionForm, setMissionForm] = useState(() => createBlankMissionForm());
+  const [selectedMissionAdmin, setSelectedMissionAdmin] = useState(null);
+  const [missionSaveLoading, setMissionSaveLoading] = useState(false);
+  const [missionPosts, setMissionPosts] = useState([]);
+  const [missionPostsLoading, setMissionPostsLoading] = useState(false);
+  const selectedMissionAdminData = useMemo(
+    () => missionsAdmin.find((mission) => mission.slug === selectedMissionAdmin) ?? null,
+    [missionsAdmin, selectedMissionAdmin]
+  );
   const [analytics, setAnalytics] = useState({
     totalUsers: 0,
     totalPosts: 0,
@@ -228,6 +336,11 @@ const AdminDashboard = () => {
     if (!isAuthorized) return;
     fetchMissionThreads();
   }, [isAuthorized, fetchMissionThreads]);
+
+  useEffect(() => {
+    if (!isAuthorized || activeTab !== 'missions') return;
+    fetchAdminMissions();
+  }, [activeTab, isAuthorized, fetchAdminMissions]);
 
   useEffect(() => {
     if (activeTab === 'moderation' && isAuthorized) {
@@ -660,6 +773,16 @@ const AdminDashboard = () => {
           item.id === thread.id ? { ...item, is_locked: nextLocked } : item
         )
       );
+      setMissionsAdmin((prev) =>
+        prev.map((item) =>
+          item.thread?.id === thread.id
+            ? { ...item, thread: { ...(item.thread || {}), is_locked: nextLocked } }
+            : item
+        )
+      );
+      setMissionForm((prev) =>
+        prev.thread_id === thread.id ? { ...prev, thread_locked: nextLocked } : prev
+      );
 
       await logAdminAction(
         nextLocked ? 'lock_mission_thread' : 'unlock_mission_thread',
@@ -676,6 +799,235 @@ const AdminDashboard = () => {
       console.error('Error toggling mission thread:', error);
       toast.error('Failed to update thread state', { id: toastId });
     }
+  };
+
+  const fetchMissionSubmissions = useCallback(
+    async (threadId) => {
+      if (!isAuthorized) return;
+      if (!threadId) {
+        setMissionPosts([]);
+        setMissionPostsLoading(false);
+        return;
+      }
+
+      setMissionPostsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('mission_posts')
+          .select(`
+            id,
+            body,
+            created_at,
+            created_by,
+            status,
+            profiles:created_by (
+              username,
+              display_name,
+              avatar_url
+            )
+          `)
+          .eq('thread_id', threadId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setMissionPosts(data ?? []);
+      } catch (error) {
+        console.error('Error fetching mission submissions:', error);
+        toast.error('Failed to load mission submissions');
+        setMissionPosts([]);
+      } finally {
+        setMissionPostsLoading(false);
+      }
+    },
+    [isAuthorized]
+  );
+
+  const fetchAdminMissions = useCallback(async () => {
+    if (!isAuthorized) return [];
+    setMissionsAdminLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('missions_featured')
+        .select(`
+          id,
+          slug,
+          slot_type,
+          slot_position,
+          title,
+          band,
+          category,
+          difficulty,
+          difficulty_color,
+          accent_glow,
+          status,
+          deadline,
+          summary,
+          objectives,
+          requirements,
+          hints,
+          rewards_xp,
+          rewards_badge,
+          rewards_bonus,
+          mission_threads (
+            id,
+            title,
+            is_locked
+          )
+        `)
+        .order('slot_type', { ascending: true })
+        .order('slot_position', { ascending: true });
+
+      if (error) throw error;
+
+      const normalized = (data ?? []).map((mission) => ({
+        id: mission.id,
+        slug: mission.slug,
+        slot_type: mission.slot_type,
+        slot_position: mission.slot_position ?? 1,
+        title: mission.title ?? '',
+        band: mission.band ?? '',
+        category: mission.category ?? '',
+        difficulty: mission.difficulty ?? '',
+        difficulty_color: mission.difficulty_color ?? '#00e0ff',
+        accent_glow: mission.accent_glow ?? '',
+        status: mission.status ?? '',
+        deadline: mission.deadline,
+        summary: mission.summary ?? '',
+        objectives: normalizeMissionList(mission.objectives),
+        requirements: normalizeMissionList(mission.requirements),
+        hints: normalizeMissionList(mission.hints),
+        rewards_xp: mission.rewards_xp ?? 0,
+        rewards_badge: mission.rewards_badge ?? '',
+        rewards_bonus: mission.rewards_bonus ?? '',
+        thread: Array.isArray(mission.mission_threads) ? mission.mission_threads[0] ?? null : null,
+      }));
+
+      normalized.sort((a, b) => {
+        const slotDiff =
+          (MISSION_SLOT_ORDER[a.slot_type] ?? 99) - (MISSION_SLOT_ORDER[b.slot_type] ?? 99);
+        if (slotDiff !== 0) return slotDiff;
+        return (a.slot_position ?? 0) - (b.slot_position ?? 0);
+      });
+
+      setMissionsAdmin(normalized);
+
+      if (normalized.length === 0) {
+        setSelectedMissionAdmin(null);
+        setMissionForm(createBlankMissionForm());
+        setMissionPosts([]);
+      } else {
+        const current =
+          normalized.find((item) => item.slug === selectedMissionAdmin) ?? normalized[0];
+        setSelectedMissionAdmin(current.slug);
+        setMissionForm(mapMissionToFormState(current));
+        await fetchMissionSubmissions(current.thread?.id ?? null);
+      }
+
+      return normalized;
+    } catch (error) {
+      console.error('Error fetching missions:', error);
+      toast.error('Failed to load missions');
+      setMissionsAdmin([]);
+      return [];
+    } finally {
+      setMissionsAdminLoading(false);
+    }
+  }, [isAuthorized, selectedMissionAdmin, fetchMissionSubmissions]);
+
+  const handleMissionSelect = (mission) => {
+    if (!mission) return;
+    setSelectedMissionAdmin(mission.slug);
+    setMissionForm(mapMissionToFormState(mission));
+    fetchMissionSubmissions(mission.thread?.id ?? null);
+  };
+
+  const handleNewMission = () => {
+    setSelectedMissionAdmin(null);
+    setMissionForm(createBlankMissionForm());
+    setMissionPosts([]);
+  };
+
+  const handleMissionInputChange = (field, value) => {
+    setMissionForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleMissionSave = async () => {
+    const trimmedTitle = missionForm.title.trim();
+    const trimmedSlug = missionForm.slug.trim();
+
+    if (!trimmedTitle || !trimmedSlug) {
+      toast.error('Mission title and slug are required.');
+      return;
+    }
+
+    setMissionSaveLoading(true);
+    try {
+      const payload = {
+        id: missionForm.id ?? undefined,
+        slot_type: missionForm.slot_type,
+        slot_position: Number(missionForm.slot_position) || 1,
+        title: trimmedTitle,
+        slug: trimmedSlug,
+        band: missionForm.band.trim() || null,
+        category: missionForm.category.trim() || null,
+        difficulty: missionForm.difficulty.trim() || null,
+        difficulty_color: missionForm.difficulty_color || '#00e0ff',
+        accent_glow: missionForm.accent_glow.trim() || null,
+        status: missionForm.status.trim() || null,
+        deadline: missionForm.deadline ? new Date(missionForm.deadline).toISOString() : null,
+        summary: missionForm.summary.trim() || null,
+        objectives: textareaToList(missionForm.objectives),
+        requirements: textareaToList(missionForm.requirements),
+        hints: textareaToList(missionForm.hints),
+        rewards_xp: Number(missionForm.rewards_xp) || 0,
+        rewards_badge: missionForm.rewards_badge.trim() || null,
+        rewards_bonus: missionForm.rewards_bonus.trim() || null,
+        is_active: true,
+      };
+
+      const { data, error } = await supabase
+        .from('missions_featured')
+        .upsert(payload, { onConflict: 'slug' })
+        .select('id, slug')
+        .single();
+
+      if (error) throw error;
+
+      await fetchMissionThreads();
+      const refreshed = await fetchAdminMissions();
+      const matching =
+        (refreshed ?? []).find((item) => item.slug === (data?.slug ?? payload.slug)) ?? null;
+
+      if (matching) {
+        setSelectedMissionAdmin(matching.slug);
+        setMissionForm(mapMissionToFormState(matching));
+        fetchMissionSubmissions(matching.thread?.id ?? null);
+      } else {
+        setMissionForm(createBlankMissionForm());
+        setMissionPosts([]);
+      }
+
+      toast.success('Mission saved.');
+    } catch (error) {
+      console.error('Error saving mission:', error);
+      toast.error(error.message ?? 'Failed to save mission.');
+    } finally {
+      setMissionSaveLoading(false);
+    }
+  };
+
+  const handleMissionThreadToggle = async (mission, nextLocked) => {
+    if (!mission?.thread) {
+      toast.error('This mission does not have a command thread yet.');
+      return;
+    }
+    await toggleMissionThread(mission.thread, nextLocked);
+    setMissionForm((prev) =>
+      prev.id === mission.id ? { ...prev, thread_locked: nextLocked } : prev
+    );
   };
 
   const fetchAdmins = async () => {
@@ -1246,6 +1598,7 @@ const AdminDashboard = () => {
             <div className="flex gap-2 border-b border-white/10 overflow-x-auto">
               {[
                 { id: 'overview', label: 'Overview', icon: BarChart3 },
+                { id: 'missions', label: 'Missions', icon: Target },
                 { id: 'moderation', label: 'Moderation', icon: Shield },
                 { id: 'users', label: 'Users', icon: Users },
                 { id: 'analytics', label: 'Analytics', icon: Activity },
@@ -1652,6 +2005,421 @@ const AdminDashboard = () => {
             </motion.div>
           </div>
             </>
+          )}
+
+          {activeTab === 'missions' && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <div className="grid gap-6 xl:grid-cols-[1.05fr_1.35fr]">
+                <div className="space-y-6">
+                  <div className="rounded-3xl border border-white/10 bg-white/5 p-5 sm:p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+                      <div>
+                        <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3 text-white">
+                          <Target className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
+                          Mission Control
+                        </h2>
+                        <p className="font-exo text-sm text-gray-400">
+                          Publish, schedule, and moderate operative assignments.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <motion.button
+                          whileHover={{ scale: missionsAdminLoading ? 1 : 1.02 }}
+                          whileTap={{ scale: missionsAdminLoading ? 1 : 0.98 }}
+                          onClick={fetchAdminMissions}
+                          disabled={missionsAdminLoading}
+                          className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-orbitron uppercase tracking-[0.32em] text-gray-300 transition-all hover:border-cyber-blue/60 hover:text-white disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${missionsAdminLoading ? 'animate-spin' : ''}`} />
+                          Refresh
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={handleNewMission}
+                          className="inline-flex items-center gap-2 rounded-lg border border-cyber-blue/50 bg-cyber-blue/15 px-3 py-1.5 text-[10px] font-orbitron uppercase tracking-[0.32em] text-cyber-blue hover:bg-cyber-blue/25 transition-all"
+                        >
+                          <Plus className="w-4 h-4" />
+                          New Mission
+                        </motion.button>
+                      </div>
+                    </div>
+                    {missionsAdminLoading ? (
+                      <div className="space-y-3">
+                        {Array.from({ length: 4 }).map((_, index) => (
+                          <div
+                            key={`mission-skeleton-${index}`}
+                            className="h-20 rounded-2xl border border-white/10 bg-white/5 animate-pulse"
+                          />
+                        ))}
+                      </div>
+                    ) : missionsAdmin.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-6 text-center">
+                        <p className="font-exo text-sm text-gray-400">
+                          No missions found. Create a new mission to get started.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
+                        {missionsAdmin.map((mission) => {
+                          const isActive = mission.slug === selectedMissionAdmin;
+                          const threadState = mission.thread?.is_locked ? 'Thread Paused' : 'Thread Live';
+                          return (
+                            <button
+                              type="button"
+                              key={mission.id}
+                              onClick={() => handleMissionSelect(mission)}
+                              className={`w-full text-left rounded-2xl border px-4 py-4 transition-all ${
+                                isActive
+                                  ? 'border-cyber-blue/70 bg-cyber-blue/15 shadow-lg shadow-cyber-blue/30'
+                                  : 'border-white/10 bg-white/5 hover:border-cyber-blue/30'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="font-orbitron text-base text-white">{mission.title}</p>
+                                  <p className="font-exo text-xs text-gray-400 mt-1">
+                                    {mission.band || mission.category || 'Operation'}
+                                  </p>
+                                </div>
+                                <span className="rounded-full border border-white/15 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.35em] text-gray-300">
+                                  {mission.difficulty || 'Unrated'}
+                                </span>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-orbitron uppercase tracking-[0.35em] text-gray-400">
+                                <span className="rounded-md border border-white/15 px-2 py-0.5">
+                                  {mission.slot_type}
+                                </span>
+                                {mission.status && (
+                                  <span className="rounded-md border border-white/15 px-2 py-0.5">
+                                    {mission.status}
+                                  </span>
+                                )}
+                                <span
+                                  className={`rounded-md border px-2 py-0.5 ${
+                                    mission.thread
+                                      ? mission.thread.is_locked
+                                        ? 'border-red-500/40 text-red-300'
+                                        : 'border-cyber-blue/50 text-cyber-blue'
+                                      : 'border-white/15 text-gray-400'
+                                  }`}
+                                >
+                                  {mission.thread ? threadState : 'Thread Pending'}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedMissionAdminData?.thread && (
+                    <div className="rounded-3xl border border-white/10 bg-white/5 p-5 sm:p-6">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <h3 className="font-orbitron text-lg text-white">Command Thread</h3>
+                          <p className="font-exo text-xs text-gray-400">
+                            {selectedMissionAdminData.thread.title || 'Command conversation'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded-full border px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.35em] ${
+                              missionForm.thread_locked ? 'border-red-500/40 text-red-300' : 'border-cyber-blue/50 text-cyber-blue'
+                            }`}
+                          >
+                            {missionForm.thread_locked ? 'Paused' : 'Live'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleMissionThreadToggle(selectedMissionAdminData, !missionForm.thread_locked)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-orbitron uppercase tracking-[0.3em] text-gray-300 hover:border-cyber-blue/60 hover:text-white transition"
+                          >
+                            {missionForm.thread_locked ? 'Unlock Thread' : 'Lock Thread'}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <Link
+                          to={`/hub/mission/${selectedMissionAdminData.slug}`}
+                          className="inline-flex items-center gap-2 rounded-lg border border-cyber-blue/40 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.32em] text-cyber-blue hover:border-cyber-blue/70 hover:text-white transition"
+                        >
+                          Open Thread
+                        </Link>
+                        <span className="text-[11px] font-exo text-gray-500">
+                          Thread ID: {selectedMissionAdminData.thread.id.slice(0, 8)}…
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-6">
+                  <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+                      <div>
+                        <h3 className="font-orbitron text-xl text-white">Mission Details</h3>
+                        <p className="font-exo text-xs text-gray-400">
+                          Configure copy, slots, and rewards for the selected mission.
+                        </p>
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: missionSaveLoading ? 1 : 1.02 }}
+                        whileTap={{ scale: missionSaveLoading ? 1 : 0.98 }}
+                        onClick={handleMissionSave}
+                        disabled={missionSaveLoading}
+                        className="inline-flex items-center gap-2 rounded-lg border border-cyber-blue/50 bg-cyber-blue/15 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.32em] text-cyber-blue hover:bg-cyber-blue/25 transition-all disabled:opacity-50"
+                      >
+                        <Save className="w-4 h-4" />
+                        {missionSaveLoading ? 'Saving…' : 'Save Mission'}
+                      </motion.button>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Title
+                        <input
+                          type="text"
+                          value={missionForm.title}
+                          onChange={(event) => handleMissionInputChange('title', event.target.value)}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          placeholder="Mission title"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Slug
+                        <input
+                          type="text"
+                          value={missionForm.slug}
+                          onChange={(event) => handleMissionInputChange('slug', event.target.value)}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          placeholder="mission-identifier"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Slot Type
+                        <select
+                          value={missionForm.slot_type}
+                          onChange={(event) => handleMissionInputChange('slot_type', event.target.value)}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                        >
+                          <option value="seasonal">Seasonal</option>
+                          <option value="weekly">Weekly</option>
+                          <option value="daily">Daily</option>
+                          <option value="quick">Quick</option>
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Slot Position
+                        <input
+                          type="number"
+                          min="1"
+                          max="3"
+                          value={missionForm.slot_position}
+                          onChange={(event) => handleMissionInputChange('slot_position', event.target.value)}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Band
+                        <input
+                          type="text"
+                          value={missionForm.band}
+                          onChange={(event) => handleMissionInputChange('band', event.target.value)}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          placeholder="Weekly Assignment"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Category
+                        <input
+                          type="text"
+                          value={missionForm.category}
+                          onChange={(event) => handleMissionInputChange('category', event.target.value)}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          placeholder="Core Operation"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Difficulty
+                        <input
+                          type="text"
+                          value={missionForm.difficulty}
+                          onChange={(event) => handleMissionInputChange('difficulty', event.target.value)}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          placeholder="Advanced"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Difficulty Color
+                        <input
+                          type="color"
+                          value={missionForm.difficulty_color}
+                          onChange={(event) => handleMissionInputChange('difficulty_color', event.target.value)}
+                          className="h-10 w-full rounded-lg border border-white/10 bg-black/30 focus:border-cyber-blue focus:outline-none"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Accent Glow
+                        <input
+                          type="text"
+                          value={missionForm.accent_glow}
+                          onChange={(event) => handleMissionInputChange('accent_glow', event.target.value)}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          placeholder="Optional CSS color or gradient"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Status
+                        <input
+                          type="text"
+                          value={missionForm.status}
+                          onChange={(event) => handleMissionInputChange('status', event.target.value)}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          placeholder="Live • Ends in 6d"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Deadline
+                        <input
+                          type="datetime-local"
+                          value={missionForm.deadline}
+                          onChange={(event) => handleMissionInputChange('deadline', event.target.value)}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="space-y-4 mt-5">
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Summary
+                        <textarea
+                          value={missionForm.summary}
+                          onChange={(event) => handleMissionInputChange('summary', event.target.value)}
+                          rows={3}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none"
+                          placeholder="High-level mission overview..."
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Objectives
+                        <textarea
+                          value={missionForm.objectives}
+                          onChange={(event) => handleMissionInputChange('objectives', event.target.value)}
+                          rows={4}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none"
+                          placeholder="One objective per line"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Requirements
+                        <textarea
+                          value={missionForm.requirements}
+                          onChange={(event) => handleMissionInputChange('requirements', event.target.value)}
+                          rows={3}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none"
+                          placeholder="Prerequisites, tools, reputation level..."
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Hints / Signals
+                        <textarea
+                          value={missionForm.hints}
+                          onChange={(event) => handleMissionInputChange('hints', event.target.value)}
+                          rows={3}
+                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none"
+                          placeholder="Optional hints, one per line"
+                        />
+                      </label>
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                          Reward XP
+                          <input
+                            type="number"
+                            value={missionForm.rewards_xp}
+                            onChange={(event) => handleMissionInputChange('rewards_xp', event.target.value)}
+                            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                          Reward Badge
+                          <input
+                            type="text"
+                            value={missionForm.rewards_badge}
+                            onChange={(event) => handleMissionInputChange('rewards_badge', event.target.value)}
+                            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                            placeholder="Signal Interceptor"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                          Bonus Reward
+                          <input
+                            type="text"
+                            value={missionForm.rewards_bonus}
+                            onChange={(event) => handleMissionInputChange('rewards_bonus', event.target.value)}
+                            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                            placeholder="Private red-team drill invite"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-white/10 bg-black/40 p-6 sm:p-8">
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <h3 className="font-orbitron text-xl text-white flex items-center gap-2">
+                        <MessageSquare className="w-5 h-5 text-cyber-blue" />
+                        Recent Submissions
+                      </h3>
+                      <span className="rounded-md border border-white/10 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        {missionPosts.length} entries
+                      </span>
+                    </div>
+                    {missionPostsLoading ? (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center font-exo text-sm uppercase tracking-[0.35em] text-gray-400">
+                        Loading submissions…
+                      </div>
+                    ) : missionForm.thread_id ? (
+                      missionPosts.length === 0 ? (
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center font-exo text-sm text-gray-400">
+                          No submissions yet. Invite operatives to publish their findings.
+                        </div>
+                      ) : (
+                        <div className="space-y-4 max-h-[28rem] overflow-y-auto pr-1">
+                          {missionPosts.map((post) => (
+                            <div key={post.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-orbitron text-sm text-white">
+                                    {post.profiles?.display_name || post.profiles?.username || 'System'}
+                                  </p>
+                                  <p className="font-exo text-[11px] text-gray-500 mt-1">
+                                    {new Date(post.created_at).toLocaleString()}
+                                  </p>
+                                </div>
+                                {post.status && post.status !== 'visible' && (
+                                  <span className="rounded-md border border-orange-400/40 bg-orange-500/10 px-2 py-0.5 text-[10px] font-orbitron uppercase tracking-[0.3em] text-orange-300">
+                                    {post.status}
+                                  </span>
+                                )}
+                              </div>
+                              <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-white/10 bg-black/40 p-3 text-xs font-mono text-gray-200 max-h-48 overflow-y-auto">
+                                {post.body}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center font-exo text-sm text-gray-400">
+                        Link this mission to a command thread to capture submissions automatically.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
           )}
 
           {activeTab === 'moderation' && (

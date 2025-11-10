@@ -3,9 +3,11 @@ import { supabase } from '../supabaseClient';
 
 const AuthContext = createContext();
 
+const DEFAULT_AVATAR_URL = 'https://api.dicebear.com/7.x/bottts/svg?seed=ClawNetOperative';
+
 const DEFAULT_PROFILE_FIELDS = {
   display_name: null,
-  avatar_url: null,
+  avatar_url: DEFAULT_AVATAR_URL,
   banner_url: null,
   bio: null,
   location: null,
@@ -27,6 +29,7 @@ const DEFAULT_PROFILE_FIELDS = {
 const applyProfileDefaults = (profile) => {
   if (!profile) return null;
   const merged = { ...DEFAULT_PROFILE_FIELDS, ...profile };
+  merged.avatar_url = merged.avatar_url || DEFAULT_AVATAR_URL;
   if (!Array.isArray(merged.badges)) {
     merged.badges = [];
   }
@@ -62,7 +65,7 @@ const buildFallbackProfile = (session) => {
   return applyProfileDefaults({
     id: session.user.id,
     username: normalizedUsername,
-    avatar_url: metadata.avatar_url || metadata.picture || null,
+    avatar_url: metadata.avatar_url || metadata.picture || DEFAULT_AVATAR_URL,
     display_name: metadata.full_name || normalizedUsername,
   });
 };
