@@ -338,11 +338,6 @@ const AdminDashboard = () => {
   }, [isAuthorized, fetchMissionThreads]);
 
   useEffect(() => {
-    if (!isAuthorized || activeTab !== 'missions') return;
-    fetchAdminMissions();
-  }, [activeTab, isAuthorized, fetchAdminMissions]);
-
-  useEffect(() => {
     if (activeTab === 'moderation' && isAuthorized) {
       fetchFlaggedContent();
     }
@@ -801,48 +796,45 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchMissionSubmissions = useCallback(
-    async (threadId) => {
-      if (!isAuthorized) return;
-      if (!threadId) {
-        setMissionPosts([]);
-        setMissionPostsLoading(false);
-        return;
-      }
+  async function fetchMissionSubmissions(threadId) {
+    if (!isAuthorized) return;
+    if (!threadId) {
+      setMissionPosts([]);
+      setMissionPostsLoading(false);
+      return;
+    }
 
-      setMissionPostsLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('mission_posts')
-          .select(`
-            id,
-            body,
-            created_at,
-            created_by,
-            status,
-            profiles:created_by (
-              username,
-              display_name,
-              avatar_url
-            )
-          `)
-          .eq('thread_id', threadId)
-          .order('created_at', { ascending: false });
+    setMissionPostsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('mission_posts')
+        .select(`
+          id,
+          body,
+          created_at,
+          created_by,
+          status,
+          profiles:created_by (
+            username,
+            display_name,
+            avatar_url
+          )
+        `)
+        .eq('thread_id', threadId)
+        .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        setMissionPosts(data ?? []);
-      } catch (error) {
-        console.error('Error fetching mission submissions:', error);
-        toast.error('Failed to load mission submissions');
-        setMissionPosts([]);
-      } finally {
-        setMissionPostsLoading(false);
-      }
-    },
-    [isAuthorized]
-  );
+      if (error) throw error;
+      setMissionPosts(data ?? []);
+    } catch (error) {
+      console.error('Error fetching mission submissions:', error);
+      toast.error('Failed to load mission submissions');
+      setMissionPosts([]);
+    } finally {
+      setMissionPostsLoading(false);
+    }
+  }
 
-  const fetchAdminMissions = useCallback(async () => {
+  async function fetchAdminMissions() {
     if (!isAuthorized) return [];
     setMissionsAdminLoading(true);
     try {
@@ -932,7 +924,7 @@ const AdminDashboard = () => {
     } finally {
       setMissionsAdminLoading(false);
     }
-  }, [isAuthorized, selectedMissionAdmin, fetchMissionSubmissions]);
+  }
 
   const handleMissionSelect = (mission) => {
     if (!mission) return;
@@ -1029,6 +1021,12 @@ const AdminDashboard = () => {
       prev.id === mission.id ? { ...prev, thread_locked: nextLocked } : prev
     );
   };
+
+  useEffect(() => {
+    if (!isAuthorized || activeTab !== 'missions') return;
+    fetchAdminMissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isAuthorized]);
 
   const fetchAdmins = async () => {
     try {
