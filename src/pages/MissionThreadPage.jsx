@@ -143,6 +143,22 @@ const MissionThreadPage = () => {
         setError(null);
       }
       try {
+        // First, get the mission by slug
+        const { data: missionData, error: missionError } = await supabase
+          .from('missions_featured')
+          .select('id')
+          .eq('slug', missionId)
+          .maybeSingle();
+
+        if (missionError) throw missionError;
+        if (!missionData) {
+          if (!fallback) {
+            throw new Error('Mission not found.');
+          }
+          return;
+        }
+
+        // Then, get the thread by mission_id
         const { data, error: threadError } = await supabase
           .from('mission_threads')
           .select(
@@ -154,7 +170,7 @@ const MissionThreadPage = () => {
               status,
               last_activity_at,
               is_locked,
-              mission:missions_featured!inner(
+              mission:missions_featured(
                 id,
                 slug,
                 title,
@@ -168,7 +184,7 @@ const MissionThreadPage = () => {
               )
             `
           )
-          .eq('mission.slug', missionId)
+          .eq('mission_id', missionData.id)
           .maybeSingle();
 
         if (threadError) throw threadError;

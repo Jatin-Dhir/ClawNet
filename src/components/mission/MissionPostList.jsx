@@ -17,7 +17,9 @@ const MissionPostList = ({ posts }) => {
   useEffect(() => {
     const fetchProfiles = async () => {
       if (!posts?.length) return;
-      const userIds = [...new Set(posts.map((p) => p.created_by).filter(Boolean))];
+      // Filter to only valid UUIDs (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const userIds = [...new Set(posts.map((p) => p.created_by).filter(Boolean).filter((id) => uuidRegex.test(id)))];
       if (userIds.length === 0) return;
 
       const { data } = await supabase

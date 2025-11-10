@@ -35,6 +35,13 @@ const MissionComposer = ({
       return;
     }
 
+    // Validate threadId is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!threadId || !uuidRegex.test(threadId)) {
+      setError('Invalid thread ID. Please refresh the page.');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
