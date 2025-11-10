@@ -173,7 +173,7 @@ const MissionsPage = () => {
           .from('profiles')
           .select('id, username, display_name, xp, badges, reputation')
           .order('xp', { ascending: false })
-          .limit(5);
+          .limit(3);
 
         if (error) throw error;
         if (!cancelled) {
