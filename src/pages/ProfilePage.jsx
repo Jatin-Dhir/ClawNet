@@ -30,7 +30,8 @@ import { useAuth } from '../contexts/AuthContext';
 import RewardToken from '../components/RewardToken';
 import toast from 'react-hot-toast';
 
-const DEFAULT_AVATAR_URL = 'https://api.dicebear.com/7.x/bottts/svg?seed=ClawNetOperative';
+const DEFAULT_AVATAR_URL =
+  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect width="96" height="96" rx="18" fill="%23080B12"/><circle cx="48" cy="35" r="18" fill="%23323947"/><path d="M24 78c4-14 12-22 24-22s20 8 24 22" fill="%23323947"/></svg>';
 
 const STORAGE_BUCKET = 'profile-media';
 
@@ -171,7 +172,7 @@ const ProfilePage = () => {
   const location = useLocation();
   const outletContext = useOutletContext() || {};
   const { triggerTransition, onSignInClick } = outletContext || {};
-  const { session, profile } = useAuth();
+  const { session, profile, refreshProfile } = useAuth();
 
   const usernameParam = params?.username;
   const viewingOwnProfile =
@@ -620,6 +621,7 @@ const ProfilePage = () => {
             }
           : prev,
       );
+      await refreshProfile?.();
       toast.success('Avatar updated.');
     } catch (err) {
       console.error('Avatar upload error', err);
@@ -660,6 +662,7 @@ const ProfilePage = () => {
             }
           : prev,
       );
+      await refreshProfile?.();
       toast.success('Banner updated.');
     } catch (err) {
       console.error('Banner upload error', err);
@@ -772,21 +775,18 @@ const ProfilePage = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
-                className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/40"
+                className="rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-lg p-6 sm:p-10 shadow-[0_28px_60px_-36px_rgba(8,12,20,0.75)]"
               >
-                <div className="absolute inset-0 opacity-60">
-                  {profileData.banner_url ? (
+                {profileData.banner_url && (
+                  <div className="mb-6 overflow-hidden rounded-2xl border border-white/10">
                     <img
                       src={profileData.banner_url}
                       alt="Profile banner"
-                      className="h-full w-full object-cover"
+                      className="h-36 w-full object-cover"
                     />
-                  ) : (
-                    <div className="h-full w-full bg-gradient-to-br from-cyber-blue/40 via-cyber-purple/30 to-transparent" />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/60 to-black/40" />
-                </div>
-                <div className="relative flex flex-col gap-8 p-6 sm:p-10 lg:flex-row lg:items-center lg:justify-between">
+                  </div>
+                )}
+                <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-6">
                     <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
                       <img
@@ -920,223 +920,26 @@ const ProfilePage = () => {
                   </div>
                 </div>
                 {featuredBadges.length > 0 && (
-                  <div className="relative z-10 border-t border-white/10 bg-black/40 px-6 pb-6 sm:px-10 sm:pb-10">
-                    <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                      {featuredBadges.map((badge) => {
-                        const accent = badge.accent ?? BADGE_LIBRARY[badge.slug ?? '']?.accent ?? '#0EA5E9';
-                        return (
-                          <div
-                            key={`spotlight-${badge.slug}`}
-                            className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-black/70 via-black/60 to-black/30 p-5"
-                            style={{ boxShadow: `0 0 40px ${accent}22` }}
-                          >
-                            <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-white/5 to-transparent" />
-                            <div className="relative flex items-center gap-4">
-                              <div
-                                className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-black/60"
-                                style={{ boxShadow: `0 0 24px ${accent}33` }}
-                              >
-                                <Award className="h-6 w-6" style={{ color: accent }} />
-                              </div>
-                              <div>
-                                <p className="font-orbitron text-xs uppercase tracking-[0.4em] text-gray-400">Spotlight</p>
-                                <h3 className="font-orbitron text-base uppercase tracking-[0.3em] text-white">
-                                  {badge.title ?? badge.slug}
-                                </h3>
-                                {badge.description && (
-                                  <p className="mt-1 font-exo text-xs text-gray-400">{badge.description}</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </motion.section>
-
-              <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.05 }}
-                className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8"
-              >
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-orbitron text-2xl font-semibold uppercase tracking-[0.35em]">
-                      Badge Case
-                    </h2>
-                    <p className="mt-2 font-exo text-sm text-gray-400">
-                      Track your mission accolades and community honors.
-                    </p>
-                  </div>
-                  {viewingOwnProfile && (
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.96 }}
-                      onClick={() => navigate('/missions')}
-                      className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-300 transition-all hover:border-cyber-blue/50 hover:text-white"
-                    >
-                      <Sparkles className="h-4 w-4 text-cyber-cyan" />
-                      Earn More
-                    </motion.button>
-                  )}
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {(profileData.badges?.length ?? 0) > 0 ? (
-                    profileData.badges.map((badge) => {
-                      const accent = badge.accent ?? BADGE_LIBRARY[badge.slug ?? '']?.accent ?? '#00E0FF';
-                      const isFeatured = badgeShowcase.includes(badge.slug);
+                  <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                    {featuredBadges.map((badge) => {
+                      const accent = badge.accent ?? BADGE_LIBRARY[badge.slug ?? '']?.accent ?? '#0EA5E9';
                       return (
                         <div
-                          key={badge.slug ?? badge.title}
-                          className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5"
+                          key={`spotlight-${badge.slug}`}
+                          className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
                         >
-                          <div
-                            className="absolute inset-0 opacity-0 transition-opacity duration-300 hover:opacity-100"
-                            style={{
-                              background: `radial-gradient(circle at top left, ${accent}33 0%, transparent 70%)`,
-                            }}
-                          />
-                          <div className="relative flex items-center gap-4">
-                            <div
-                              className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-black/40"
-                              style={{ boxShadow: `0 0 24px ${accent}22` }}
-                            >
-                              <Medal className="h-6 w-6" style={{ color: accent }} />
-                            </div>
-                            <div>
-                              <h3 className="font-orbitron text-sm uppercase tracking-[0.3em]">
-                                {badge.title ?? badge.slug ?? 'Badge'}
-                              </h3>
-                              {badge.description && (
-                                <p className="mt-1 text-xs font-exo text-gray-400">{badge.description}</p>
-                              )}
-                              {badge.earned_at && (
-                                <p className="mt-2 text-[10px] font-exo uppercase tracking-[0.3em] text-gray-500">
-                                  Earned {new Date(badge.earned_at).toLocaleDateString()}
-                                </p>
-                              )}
-                            </div>
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-black/50">
+                            <Award className="h-6 w-6" style={{ color: accent }} />
                           </div>
-                          {viewingOwnProfile && (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleBadgeSpotlight(badge.slug)}
-                              className={`absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/50 transition ${
-                                isFeatured ? 'text-amber-300' : 'text-gray-400 hover:text-white'
-                              }`}
-                            >
-                              <Star
-                                className="h-4 w-4"
-                                fill={isFeatured ? '#FCD34D' : 'transparent'}
-                                strokeWidth={isFeatured ? 1 : 1.5}
-                              />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-center sm:col-span-2 lg:col-span-3">
-                      <p className="font-exo text-sm text-gray-400">
-                        No badges yet. Complete missions to start filling your badge case.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </motion.section>
-
-              <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8"
-              >
-                <div className="mb-6 flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-orbitron text-2xl font-semibold uppercase tracking-[0.35em]">
-                      Mission Feed
-                    </h2>
-                    <p className="mt-2 font-exo text-sm text-gray-400">
-                      Your latest drops across ClawNet missions and threads.
-                    </p>
-                  </div>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.96 }}
-                    onClick={() => navigate('/hub')}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-300 transition-all hover:border-cyber-blue/50 hover:text-white"
-                  >
-                    <Activity className="h-4 w-4 text-cyber-cyan" />
-                    Open Hub
-                  </motion.button>
-                </div>
-
-                {activityLoading ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
-                    <motion.div
-                      animate={{ opacity: [0.2, 1, 0.2] }}
-                      transition={{ repeat: Infinity, duration: 1.2 }}
-                      className="mx-auto mb-4 h-10 w-10 rounded-full border border-cyber-blue/30 border-t-transparent"
-                    />
-                    <p className="font-exo text-xs uppercase tracking-[0.4em] text-gray-500">
-                      Syncing activity…
-                    </p>
-                  </div>
-                ) : activity.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-center">
-                    <p className="font-exo text-sm text-gray-400">
-                      No mission posts yet. Engage with a mission thread to populate your feed.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {activity.map((entry) => {
-                      const mission = entry.mission_threads?.mission;
-                      return (
-                        <div
-                          key={entry.id}
-                          className="rounded-2xl border border-white/10 bg-black/40 p-5 sm:p-6"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <p className="font-orbitron text-xs uppercase tracking-[0.3em] text-gray-500">
-                                {mission?.band ?? 'Mission Thread'}
-                              </p>
-                              <h3 className="mt-1 font-orbitron text-base tracking-[0.15em] text-white">
-                                {mission?.title ?? 'Thread Activity'}
-                              </h3>
-                            </div>
-                            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.35em] text-gray-400">
-                              <Zap className="h-3.5 w-3.5 text-cyber-cyan" />
-                              {new Date(entry.created_at).toLocaleDateString(undefined, {
-                                month: 'short',
-                                day: 'numeric',
-                              })}
-                            </div>
+                          <div>
+                            <p className="font-orbitron text-[10px] uppercase tracking-[0.35em] text-gray-400">Spotlight</p>
+                            <h3 className="font-orbitron text-sm uppercase tracking-[0.3em] text-white">
+                              {badge.title ?? badge.slug}
+                            </h3>
+                            {badge.description && (
+                              <p className="mt-1 font-exo text-xs text-gray-400">{badge.description}</p>
+                            )}
                           </div>
-                          <div className="mt-4 rounded-xl border border-white/5 bg-black/60 p-4">
-                            <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-gray-200">
-                              {entry.body}
-                            </pre>
-                          </div>
-                          {mission?.slug && (
-                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                              <div className="flex items-center gap-2 text-[10px] font-orbitron uppercase tracking-[0.35em] text-gray-500">
-                                <Shield className="h-3.5 w-3.5 text-cyber-blue" />
-                                {mission.difficulty}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => navigate(`/hub/mission/${mission.slug}`)}
-                                className="inline-flex items-center gap-2 rounded-lg border border-cyber-blue/40 px-3 py-1.5 text-[10px] font-orbitron uppercase tracking-[0.3em] text-cyber-blue hover:bg-cyber-blue/10"
-                              >
-                                View Thread
-                              </button>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -1148,10 +951,10 @@ const ProfilePage = () => {
                 <motion.section
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.12 }}
+                  transition={{ duration: 0.6, delay: 0.05 }}
                   className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]"
                 >
-                  <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
                     <div className="mb-6 flex items-center justify-between gap-3">
                       <div>
                         <h2 className="font-orbitron text-2xl font-semibold uppercase tracking-[0.35em]">
@@ -1276,7 +1079,7 @@ const ProfilePage = () => {
                     )}
                   </div>
                   <div className="space-y-6">
-                    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
                       <div className="mb-5 flex items-center justify-between gap-3">
                         <div>
                           <h3 className="font-orbitron text-lg uppercase tracking-[0.3em]">Preferences</h3>
@@ -1372,7 +1175,7 @@ const ProfilePage = () => {
                         {savingPreferences ? 'Saving…' : 'Save Preferences'}
                       </motion.button>
                     </div>
-                    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
                       <div className="mb-5 flex items-center justify-between gap-3">
                         <div>
                           <h3 className="font-orbitron text-lg uppercase tracking-[0.3em]">
@@ -1413,6 +1216,189 @@ const ProfilePage = () => {
                   </div>
                 </motion.section>
               )}
+
+              <motion.section
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.08 }}
+                className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8"
+              >
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-orbitron text-2xl font-semibold uppercase tracking-[0.35em]">
+                      Badge Case
+                    </h2>
+                    <p className="mt-2 font-exo text-sm text-gray-400">
+                      Track your mission accolades and community honors.
+                    </p>
+                  </div>
+                  {viewingOwnProfile && (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.96 }}
+                      onClick={() => navigate('/missions')}
+                      className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-300 transition-all hover:border-cyber-blue/50 hover:text-white"
+                    >
+                      <Sparkles className="h-4 w-4 text-cyber-cyan" />
+                      Earn More
+                    </motion.button>
+                  )}
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {(profileData.badges?.length ?? 0) > 0 ? (
+                    profileData.badges.map((badge) => {
+                      const accent = badge.accent ?? BADGE_LIBRARY[badge.slug ?? '']?.accent ?? '#00E0FF';
+                      const isFeatured = badgeShowcase.includes(badge.slug);
+                      return (
+                        <div
+                          key={badge.slug ?? badge.title}
+                          className="relative rounded-2xl border border-white/12 bg-white/[0.02] p-5"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div
+                              className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-black/45"
+                            >
+                              <Medal className="h-6 w-6" style={{ color: accent }} />
+                            </div>
+                            <div className="min-w-0 break-words">
+                              <h3 className="font-orbitron text-sm uppercase tracking-[0.24em] text-white leading-snug">
+                                {badge.title ?? badge.slug ?? 'Badge'}
+                              </h3>
+                              {badge.description && (
+                                <p className="mt-1 text-xs font-exo text-gray-400 whitespace-pre-wrap">
+                                  {badge.description}
+                                </p>
+                              )}
+                              {badge.earned_at && (
+                                <p className="mt-2 text-[10px] font-exo uppercase tracking-[0.3em] text-gray-500">
+                                  Earned {new Date(badge.earned_at).toLocaleDateString()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          {viewingOwnProfile && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleBadgeSpotlight(badge.slug)}
+                              className={`absolute bottom-4 right-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/55 transition ${
+                                isFeatured ? 'text-amber-300' : 'text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              <Star
+                                className="h-4 w-4"
+                                fill={isFeatured ? '#FCD34D' : 'transparent'}
+                                strokeWidth={isFeatured ? 1 : 1.5}
+                              />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-center sm:col-span-2 lg:col-span-3">
+                      <p className="font-exo text-sm text-gray-400">
+                        No badges yet. Complete missions to start filling your badge case.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </motion.section>
+
+              <motion.section
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.12 }}
+                className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-8"
+              >
+                <div className="mb-6 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-orbitron text-2xl font-semibold uppercase tracking-[0.35em]">
+                      Mission Feed
+                    </h2>
+                    <p className="mt-2 font-exo text-sm text-gray-400">
+                      Your latest drops across ClawNet missions and threads.
+                    </p>
+                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => navigate('/hub')}
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-300 transition-all hover:border-cyber-blue/50 hover:text-white"
+                  >
+                    <Activity className="h-4 w-4 text-cyber-cyan" />
+                    Open Hub
+                  </motion.button>
+                </div>
+
+                {activityLoading ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
+                    <motion.div
+                      animate={{ opacity: [0.2, 1, 0.2] }}
+                      transition={{ repeat: Infinity, duration: 1.2 }}
+                      className="mx-auto mb-4 h-10 w-10 rounded-full border border-cyber-blue/30 border-t-transparent"
+                    />
+                    <p className="font-exo text-xs uppercase tracking-[0.4em] text-gray-500">
+                      Syncing activity…
+                    </p>
+                  </div>
+                ) : activity.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-center">
+                    <p className="font-exo text-sm text-gray-400">
+                      No mission posts yet. Engage with a mission thread to populate your feed.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {activity.map((entry) => {
+                      const mission = entry.mission_threads?.mission;
+                      return (
+                        <div
+                          key={entry.id}
+                          className="rounded-2xl border border-white/10 bg-black/40 p-5 sm:p-6"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="font-orbitron text-xs uppercase tracking-[0.3em] text-gray-500">
+                                {mission?.band ?? 'Mission Thread'}
+                              </p>
+                              <h3 className="mt-1 font-orbitron text-base tracking-[0.15em] text-white">
+                                {mission?.title ?? 'Thread Activity'}
+                              </h3>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.35em] text-gray-400">
+                              <Zap className="h-3.5 w-3.5 text-cyber-cyan" />
+                              {new Date(entry.created_at).toLocaleDateString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </div>
+                          </div>
+                          <div className="mt-4 rounded-xl border border-white/5 bg-black/60 p-4">
+                            <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-gray-200">
+                              {entry.body}
+                            </pre>
+                          </div>
+                          {mission?.slug && (
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex items-center gap-2 text-[10px] font-orbitron uppercase tracking-[0.35em] text-gray-500">
+                                <Shield className="h-3.5 w-3.5 text-cyber-blue" />
+                                {mission.difficulty}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/hub/mission/${mission.slug}`)}
+                                className="inline-flex items-center gap-2 rounded-lg border border-cyber-blue/40 px-3 py-1.5 text-[10px] font-orbitron uppercase tracking-[0.3em] text-cyber-blue hover:bg-cyber-blue/10"
+                              >
+                                View Thread
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </motion.section>
             </div>
           )
         )}
