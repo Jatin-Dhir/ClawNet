@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Shield, Menu, X, LogOut, User, LayoutDashboard, Settings, Lock } from 'lucide-react';
+import { Shield, Menu, X, LogOut, User, LayoutDashboard, Lock, ChevronDown, Settings2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import SystemShutdown from './transitions/SystemShutdown';
@@ -11,9 +11,11 @@ const Navbar = ({ onSignInClick }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { session, profile, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const userMenuRef = useRef(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -22,6 +24,21 @@ const Navbar = ({ onSignInClick }) => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleClickAway = (event) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickAway);
+    return () => document.removeEventListener('mousedown', handleClickAway);
+  }, [userMenuOpen]);
+
+  useEffect(() => {
+    setUserMenuOpen(false);
+  }, [location.pathname]);
 
   // Check if user is admin
   useEffect(() => {
@@ -54,6 +71,7 @@ const Navbar = ({ onSignInClick }) => {
   
   const handleSignOut = async () => {
     setMobileMenuOpen(false);
+    setUserMenuOpen(false);
     setIsShuttingDown(true);
     setTimeout(async () => {
       await signOut();
@@ -90,7 +108,18 @@ const Navbar = ({ onSignInClick }) => {
     }
   };
 
-  const displayName = profile?.username || session?.user?.user_metadata?.full_name || session?.user?.email || 'User';
+  const displayName =
+    profile?.display_name ||
+    profile?.username ||
+    session?.user?.user_metadata?.full_name ||
+    session?.user?.email ||
+    'Operative';
+  const avatarUrl =
+    profile?.avatar_url ||
+    session?.user?.user_metadata?.avatar_url ||
+    null;
+  const avatarInitial = (displayName || 'O').charAt(0).toUpperCase();
+  const profilePath = profile?.username ? `/profile/${profile.username}` : '/profile';
 
   return (
     <>
@@ -132,51 +161,105 @@ const Navbar = ({ onSignInClick }) => {
 
             <div className="flex items-center gap-4">
               {session ? (
-                <div className="hidden md:flex items-center gap-4">
-                  <span className="font-exo text-sm text-gray-300">
-                    Welcome,&nbsp;
-                    <span className="font-bold text-cyber-cyan">{displayName}</span>
-                  </span>
-                  <Link to={profile?.username ? `/profile/${profile.username}` : '/profile'} className="no-quantum-transform">
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-md text-sm font-bold text-white/80 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
-                    >
-                      <User size={16} />
-                      Profile
-                    </motion.button>
-                  </Link>
+                <div className="hidden md:flex items-center gap-3">
                   {isAdmin && (
-                  <Link to="/admin" className="no-quantum-transform">
+                    <Link to="/admin" className="no-quantum-transform">
                       <motion.button
-                        whileHover={{ scale: 1.05 }}
+                        whileHover={{ scale: 1.04 }}
                         whileTap={{ scale: 0.95 }}
-                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyber-blue to-cyber-cyan rounded-md text-white text-sm font-bold no-quantum-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
+                        className="flex items-center gap-2 rounded-full border border-cyber-blue/50 bg-cyber-blue/15 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.3em] text-cyber-blue focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
                       >
-                        <Lock size={16} />
+                        <Lock size={14} />
                         Admin
                       </motion.button>
                     </Link>
                   )}
                   <Link to="/hub" className="no-quantum-transform">
                     <motion.button
-                      whileHover={{ scale: 1.05 }}
+                      whileHover={{ scale: 1.04 }}
                       whileTap={{ scale: 0.95 }}
-                      className="flex items-center gap-2 px-4 py-2 bg-cyber-blue/10 border border-cyber-blue rounded-md text-cyber-blue text-sm font-bold no-quantum-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
+                      className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black hover:text-white"
                     >
-                      <LayoutDashboard size={16} />
+                      <LayoutDashboard size={14} />
                       Hub
                     </motion.button>
                   </Link>
-                  <motion.button
-                    onClick={handleSignOut}
-                    whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,0,0,0.2)' }}
-                    whileTap={{ scale: 0.95 }}
-                  className="p-2 rounded-md border border-red-500/50 text-red-500/80 hover:text-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
-                  >
-                    <LogOut size={18} />
-                  </motion.button>
+                  <div className="relative" ref={userMenuRef}>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setUserMenuOpen((prev) => !prev)}
+                      className="flex items-center gap-3 rounded-full border border-white/15 bg-white/5 pl-1 pr-3 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyber-cyan/70 focus-visible:ring-offset-2 focus-visible:ring-offset-cyber-black"
+                    >
+                      <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-black/60">
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="font-orbitron text-sm text-white">{avatarInitial}</span>
+                        )}
+                      </span>
+                      <div className="hidden sm:block text-left">
+                        <p className="text-[10px] font-exo uppercase tracking-[0.3em] text-gray-400">Operative</p>
+                        <p className="font-orbitron text-sm text-white">{displayName}</p>
+                      </div>
+                      <motion.span
+                        animate={{ rotate: userMenuOpen ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="text-gray-400"
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </motion.span>
+                    </motion.button>
+                    <AnimatePresence>
+                      {userMenuOpen && (
+                        <motion.div
+                          key="user-menu"
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 8 }}
+                          transition={{ duration: 0.18 }}
+                          className="absolute right-0 mt-3 w-60 rounded-3xl border border-white/10 bg-cyber-black/95 p-4 shadow-[0_18px_40px_rgba(12,18,32,0.55)] backdrop-blur-xl"
+                        >
+                          <div className="mb-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+                            <p className="text-[10px] font-orbitron uppercase tracking-[0.35em] text-gray-500">Signed in as</p>
+                            <p className="mt-1 font-orbitron text-sm text-white truncate">{displayName}</p>
+                          </div>
+                          <div className="space-y-2 text-sm font-exo text-gray-200">
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-xl border border-transparent px-3 py-2 hover:border-cyber-blue/40 hover:bg-cyber-blue/10 hover:text-white transition"
+                              onClick={() => {
+                                navigate(profilePath);
+                                setUserMenuOpen(false);
+                              }}
+                            >
+                              <User size={16} className="text-cyber-cyan" />
+                              View Profile
+                            </button>
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-xl border border-transparent px-3 py-2 hover:border-cyber-blue/40 hover:bg-cyber-blue/10 hover:text-white transition"
+                              onClick={() => {
+                                navigate(profilePath.includes('?') ? `${profilePath}&panel=settings` : `${profilePath}?panel=settings`);
+                                setUserMenuOpen(false);
+                              }}
+                            >
+                              <Settings2 size={16} className="text-cyber-cyan" />
+                              Profile Settings
+                            </button>
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-xl border border-transparent px-3 py-2 hover:border-red-400/40 hover:bg-red-500/10 text-red-300 transition"
+                              onClick={handleSignOut}
+                            >
+                              <LogOut size={16} />
+                              Sign Out
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               ) : (
                 <motion.button

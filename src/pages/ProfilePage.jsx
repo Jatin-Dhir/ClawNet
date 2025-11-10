@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useNavigate, useOutletContext, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -13,11 +13,32 @@ import {
   Activity,
   Medal,
   Target,
-  RefreshCw,
+  Edit3,
+  UploadCloud,
+  Image as ImageIcon,
+  Settings2,
+  Bell,
+  Mail,
+  Globe,
+  UserCog,
+  Save,
+  Star,
+  Eye,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import RewardToken from '../components/RewardToken';
+import toast from 'react-hot-toast';
+
+const STORAGE_BUCKET = 'profile-media';
+
+const DEFAULT_PREFERENCES = {
+  missionAlerts: true,
+  weeklyDigest: true,
+  showcasePublic: true,
+  emailUpdates: true,
+  darkInterface: true,
+};
 
 const BADGE_LIBRARY = {
   'vault-specter': {
@@ -63,6 +84,8 @@ const FALLBACK_PROFILE = (username) => ({
   xp: 0,
   badges: ['perimeter-pinger'],
   created_at: new Date().toISOString(),
+  preferences: DEFAULT_PREFERENCES,
+  badge_showcase_order: ['perimeter-pinger'],
 });
 
 const PROFILE_SELECT = `
@@ -78,6 +101,8 @@ const PROFILE_SELECT = `
   xp,
   badges,
   reputation,
+  preferences,
+  badge_showcase_order,
   created_at
 `;
 
@@ -99,7 +124,7 @@ const ACTIVITY_SELECT = `
 
 const xpLevelFromTotal = (xp) => {
   const level = Math.floor((xp ?? 0) / 500) + 1;
-  const nextLevel = (level) * 500;
+  const nextLevel = level * 500;
   const prevLevel = (level - 1) * 500;
   const progress = Math.min(1, Math.max(0, ((xp ?? 0) - prevLevel) / (nextLevel - prevLevel || 1)));
   return { level, progress, nextLevel };
@@ -108,20 +133,22 @@ const xpLevelFromTotal = (xp) => {
 const resolveBadges = (badgePayload) => {
   if (!badgePayload) return [];
   if (Array.isArray(badgePayload)) {
-    return badgePayload.map((item) => {
-      if (typeof item === 'string') {
-        return { slug: item, ...(BADGE_LIBRARY[item] ?? { title: item }) };
-      }
-      if (item && typeof item === 'object') {
-        const slug = item.slug ?? item.id ?? item.code ?? item.title?.toLowerCase()?.replace(/\s+/g, '-');
-        return {
-          slug,
-          ...(BADGE_LIBRARY[slug] ?? {}),
-          ...item,
-        };
-      }
-      return null;
-    }).filter(Boolean);
+    return badgePayload
+      .map((item) => {
+        if (typeof item === 'string') {
+          return { slug: item, ...(BADGE_LIBRARY[item] ?? { title: item }) };
+        }
+        if (item && typeof item === 'object') {
+          const slug = item.slug ?? item.id ?? item.code ?? item.title?.toLowerCase()?.replace(/\s+/g, '-');
+          return {
+            slug,
+            ...(BADGE_LIBRARY[slug] ?? {}),
+            ...item,
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
   }
 
   if (typeof badgePayload === 'string') {
@@ -139,12 +166,19 @@ const resolveBadges = (badgePayload) => {
 const ProfilePage = () => {
   const navigate = useNavigate();
   const params = useParams();
-  const outletContext = typeof useOutletContext === 'function' ? useOutletContext() : {};
+  const location = useLocation();
+  const outletContext = useOutletContext() || {};
   const { triggerTransition, onSignInClick } = outletContext || {};
   const { session, profile } = useAuth();
 
   const usernameParam = params?.username;
-  const viewingOwnProfile = !usernameParam || (profile?.username && usernameParam?.toLowerCase() === profile.username?.toLowerCase());
+  const viewingOwnProfile =
+    !usernameParam ||
+    (profile?.username && usernameParam?.toLowerCase() === profile.username?.toLowerCase());
+  const queryPanel = useMemo(() => {
+    const query = new URLSearchParams(location.search);
+    return query.get('panel');
+  }, [location.search]);
 
   const [profileData, setProfileData] = useState(null);
   const [activity, setActivity] = useState([]);
@@ -152,6 +186,24 @@ const ProfilePage = () => {
   const [activityLoading, setActivityLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isFallback, setIsFallback] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [formState, setFormState] = useState({
+    displayName: '',
+    bio: '',
+    location: '',
+    website: '',
+    pronouns: '',
+  });
+  const [preferencesForm, setPreferencesForm] = useState(DEFAULT_PREFERENCES);
+  const [badgeShowcase, setBadgeShowcase] = useState([]);
+  const [emailForm, setEmailForm] = useState(session?.user?.email ?? '');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingPreferences, setSavingPreferences] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const avatarInputRef = useRef(null);
+  const bannerInputRef = useRef(null);
 
   const handleRequestSignIn = useCallback(() => {
     if (typeof triggerTransition === 'function' && typeof onSignInClick === 'function') {
@@ -173,9 +225,7 @@ const ProfilePage = () => {
           throw new Error('Sign in required');
         }
 
-        let query = supabase
-          .from('profiles')
-          .select(PROFILE_SELECT);
+        let query = supabase.from('profiles').select(PROFILE_SELECT);
 
         if (usernameParam) {
           query = query.eq('username', usernameParam.toLowerCase()).maybeSingle();
@@ -200,9 +250,57 @@ const ProfilePage = () => {
         }
 
         if (!data) {
-          const fallback = viewingOwnProfile
-            ? { ...(profile ?? {}), ...(FALLBACK_PROFILE(profile?.username)) }
-            : FALLBACK_PROFILE(usernameParam);
+          if (viewingOwnProfile) {
+            const fallbackProfile = {
+              ...(profile ?? {}),
+              ...(FALLBACK_PROFILE(profile?.username)),
+              id: session.user.id,
+            };
+
+            const { data: createdProfile, error: createError } = await supabase
+              .from('profiles')
+              .upsert(
+                {
+                  id: fallbackProfile.id,
+                  username: fallbackProfile.username,
+                  display_name: fallbackProfile.display_name,
+                  avatar_url: fallbackProfile.avatar_url,
+                  banner_url: fallbackProfile.banner_url,
+                  bio: fallbackProfile.bio,
+                  location: fallbackProfile.location,
+                  website: fallbackProfile.website,
+                  pronouns: fallbackProfile.pronouns,
+                  xp: fallbackProfile.xp,
+                  badges: fallbackProfile.badges,
+                  reputation: fallbackProfile.reputation,
+                  preferences: fallbackProfile.preferences,
+                  badge_showcase_order: fallbackProfile.badge_showcase_order,
+                },
+                { onConflict: 'id' }
+              )
+              .select('*')
+              .single();
+
+            if (!cancelled) {
+              if (createError) {
+                console.error('Profile auto-create error', createError);
+                setProfileData(fallbackProfile);
+                setIsFallback(true);
+              } else {
+                setProfileData({
+                  ...createdProfile,
+                  badges: resolveBadges(createdProfile.badges),
+                  preferences: {
+                    ...DEFAULT_PREFERENCES,
+                    ...(createdProfile.preferences ?? {}),
+                  },
+                });
+              }
+            }
+            return;
+          }
+
+          const fallback = FALLBACK_PROFILE(usernameParam);
           if (!cancelled) {
             setProfileData(fallback);
             setIsFallback(true);
@@ -214,6 +312,7 @@ const ProfilePage = () => {
           setProfileData({
             ...data,
             badges: resolveBadges(data.badges),
+            preferences: { ...DEFAULT_PREFERENCES, ...(data.preferences ?? {}) },
           });
         }
       } catch (err) {
@@ -234,6 +333,34 @@ const ProfilePage = () => {
       cancelled = true;
     };
   }, [usernameParam, session?.user?.id, profile, viewingOwnProfile]);
+
+  useEffect(() => {
+    if (!profileData) return;
+    setFormState({
+      displayName: profileData.display_name ?? '',
+      bio: profileData.bio ?? '',
+      location: profileData.location ?? '',
+      website: profileData.website ?? '',
+      pronouns: profileData.pronouns ?? '',
+    });
+    setPreferencesForm({
+      ...DEFAULT_PREFERENCES,
+      ...(profileData.preferences ?? {}),
+    });
+    setEmailForm(session?.user?.email ?? '');
+    const badgeSlugs = (profileData.badges ?? []).map((badge) => badge.slug).filter(Boolean);
+    const savedOrder = Array.isArray(profileData.badge_showcase_order)
+      ? profileData.badge_showcase_order.filter((slug) => badgeSlugs.includes(slug))
+      : [];
+    const fallbackOrder = badgeSlugs.filter((slug) => !savedOrder.includes(slug));
+    setBadgeShowcase([...savedOrder, ...fallbackOrder].slice(0, 3));
+  }, [profileData, session?.user?.email]);
+
+  useEffect(() => {
+    if (viewingOwnProfile && queryPanel === 'settings') {
+      setEditMode(true);
+    }
+  }, [queryPanel, viewingOwnProfile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -294,6 +421,261 @@ const ProfilePage = () => {
     }
   }, [profileData?.created_at]);
 
+  const featuredBadges = useMemo(() => {
+    if (!profileData?.badges || badgeShowcase.length === 0) return [];
+    return badgeShowcase
+      .map((slug) => profileData.badges.find((badge) => badge.slug === slug))
+      .filter(Boolean);
+  }, [profileData?.badges, badgeShowcase]);
+
+  const normalizeWebsite = (value) => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
+
+  const handleFormChange = (event) => {
+    const { name, value } = event.target;
+    setFormState((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleToggleBadgeSpotlight = (slug) => {
+    if (!viewingOwnProfile) return;
+    setBadgeShowcase((prev) => {
+      if (prev.includes(slug)) {
+        return prev.filter((item) => item !== slug);
+      }
+      const next = [...prev, slug];
+      if (next.length > 3) {
+        next.shift();
+      }
+      return next;
+    });
+  };
+
+  const handleSaveProfile = async () => {
+    if (!viewingOwnProfile) {
+      toast.error('You can only edit your own profile.');
+      return;
+    }
+    if (isFallback) {
+      toast.error('Profile editing is unavailable while using fallback data.');
+      return;
+    }
+    if (!profileData?.id) return;
+
+    setSavingProfile(true);
+
+    const updates = {
+      display_name: formState.displayName.trim() || null,
+      bio: formState.bio.trim() || null,
+      location: formState.location.trim() || null,
+      pronouns: formState.pronouns.trim() || null,
+      website: normalizeWebsite(formState.website),
+      badge_showcase_order: badgeShowcase,
+    };
+
+    try {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', profileData.id);
+
+      if (updateError) throw updateError;
+
+      setProfileData((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...updates,
+            }
+          : prev,
+      );
+      toast.success('Profile updated.');
+      setEditMode(false);
+    } catch (err) {
+      console.error('Profile update error', err);
+      toast.error(err.message ?? 'Failed to update profile.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleSavePreferences = async () => {
+    if (!viewingOwnProfile) {
+      toast.error('You can only edit your own preferences.');
+      return;
+    }
+    if (isFallback) {
+      toast.error('Preferences are unavailable while using fallback data.');
+      return;
+    }
+    if (!profileData?.id) return;
+
+    setSavingPreferences(true);
+    try {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ preferences: preferencesForm })
+        .eq('id', profileData.id);
+
+      if (updateError) throw updateError;
+
+      setProfileData((prev) =>
+        prev
+          ? {
+              ...prev,
+              preferences: preferencesForm,
+            }
+          : prev,
+      );
+      toast.success('Preferences saved.');
+    } catch (err) {
+      console.error('Preferences update error', err);
+      toast.error(err.message ?? 'Failed to save preferences.');
+    } finally {
+      setSavingPreferences(false);
+    }
+  };
+
+  const handleEmailUpdate = async (event) => {
+    event.preventDefault();
+    if (!session?.user) {
+      handleRequestSignIn();
+      return;
+    }
+    const nextEmail = emailForm.trim();
+    if (!nextEmail) {
+      toast.error('Email cannot be empty.');
+      return;
+    }
+    if (nextEmail === session.user.email) {
+      toast('Email is unchanged.');
+      return;
+    }
+    setSavingEmail(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ email: nextEmail });
+      if (updateError) throw updateError;
+      toast.success('Verification sent to your new email. Please confirm to complete the change.');
+    } catch (err) {
+      console.error('Email update error', err);
+      toast.error(err.message ?? 'Failed to update email.');
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const uploadImage = async (file, folder) => {
+    if (!file || !profileData?.id) return null;
+    const extension = file.name.split('.').pop();
+    const filePath = `${folder}/${profileData.id}-${Date.now()}.${extension}`;
+    const storage = supabase.storage.from(STORAGE_BUCKET);
+
+    const { error: uploadError } = await storage.upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: file.type,
+    });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = storage.getPublicUrl(filePath);
+    return data?.publicUrl ?? null;
+  };
+
+  const handleAvatarUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!viewingOwnProfile) {
+      toast.error('You can only update your own avatar.');
+      return;
+    }
+    if (isFallback) {
+      toast.error('Avatar uploads are disabled while using fallback data.');
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const publicUrl = await uploadImage(file, 'avatars');
+      if (!publicUrl) throw new Error('Unable to generate avatar URL.');
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', profileData.id);
+      if (updateError) throw updateError;
+      setProfileData((prev) =>
+        prev
+          ? {
+              ...prev,
+              avatar_url: publicUrl,
+            }
+          : prev,
+      );
+      toast.success('Avatar updated.');
+    } catch (err) {
+      console.error('Avatar upload error', err);
+      toast.error(err.message ?? 'Failed to upload avatar.');
+    } finally {
+      setAvatarUploading(false);
+      if (avatarInputRef.current) {
+        avatarInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleBannerUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!viewingOwnProfile) {
+      toast.error('You can only update your own banner.');
+      return;
+    }
+    if (isFallback) {
+      toast.error('Banner uploads are disabled while using fallback data.');
+      return;
+    }
+    setBannerUploading(true);
+    try {
+      const publicUrl = await uploadImage(file, 'banners');
+      if (!publicUrl) throw new Error('Unable to generate banner URL.');
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ banner_url: publicUrl })
+        .eq('id', profileData.id);
+      if (updateError) throw updateError;
+      setProfileData((prev) =>
+        prev
+          ? {
+              ...prev,
+              banner_url: publicUrl,
+            }
+          : prev,
+      );
+      toast.success('Banner updated.');
+    } catch (err) {
+      console.error('Banner upload error', err);
+      toast.error(err.message ?? 'Failed to upload banner.');
+    } finally {
+      setBannerUploading(false);
+      if (bannerInputRef.current) {
+        bannerInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handlePreferenceToggle = (key) => {
+    setPreferencesForm((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
   if (!usernameParam && !session && !loading) {
     return (
       <div className="min-h-screen bg-cyber-black text-white flex items-center justify-center px-6">
@@ -322,6 +704,13 @@ const ProfilePage = () => {
       </div>
     );
   }
+
+  const disableEdits = !viewingOwnProfile || isFallback;
+  const preferencesDisabledMessage = !viewingOwnProfile
+    ? 'Preferences can only be changed from your own profile.'
+    : isFallback
+    ? 'Preferences are read-only until Supabase migration completes.'
+    : null;
 
   return (
     <div className="min-h-screen bg-cyber-black text-white pt-24 pb-20">
@@ -380,13 +769,21 @@ const ProfilePage = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
-                className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-transparent p-6 sm:p-10 relative overflow-hidden"
+                className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/40"
               >
-                <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute -top-24 right-0 h-48 w-48 rounded-full bg-cyber-blue/10 blur-3xl" />
-                  <div className="absolute -bottom-16 left-8 h-40 w-40 rounded-full bg-cyber-purple/20 blur-3xl" />
+                <div className="absolute inset-0 opacity-60">
+                  {profileData.banner_url ? (
+                    <img
+                      src={profileData.banner_url}
+                      alt="Profile banner"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full bg-gradient-to-br from-cyber-blue/40 via-cyber-purple/30 to-transparent" />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/60 to-black/40" />
                 </div>
-                <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
+                <div className="relative flex flex-col gap-8 p-6 sm:p-10 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-6">
                     <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
                       {profileData.avatar_url ? (
@@ -407,6 +804,26 @@ const ProfilePage = () => {
                       <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-cyber-cyan/40 bg-cyber-cyan/20 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.35em] text-cyber-cyan">
                         Level {xpSummary.level}
                       </div>
+                      {viewingOwnProfile && (
+                        <>
+                          <input
+                            ref={avatarInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleAvatarUpload}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => avatarInputRef.current?.click()}
+                            className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-orbitron uppercase tracking-[0.3em] text-gray-200 hover:bg-black/80 transition"
+                            disabled={avatarUploading}
+                          >
+                            <UploadCloud className="h-3 w-3" />
+                            {avatarUploading ? 'Uploading…' : 'Avatar'}
+                          </button>
+                        </>
+                      )}
                     </div>
                     <div>
                       <div className="flex flex-wrap items-center gap-3">
@@ -419,9 +836,7 @@ const ProfilePage = () => {
                           </span>
                         )}
                       </div>
-                      <p className="mt-2 font-exo text-sm text-gray-400">
-                        @{profileData.username}
-                      </p>
+                      <p className="mt-2 font-exo text-sm text-gray-400">@{profileData.username}</p>
                       {profileData.bio && (
                         <p className="mt-4 max-w-xl font-exo text-sm leading-relaxed text-gray-300">
                           {profileData.bio}
@@ -437,7 +852,11 @@ const ProfilePage = () => {
                         {joinedDate && (
                           <span className="inline-flex items-center gap-2">
                             <Calendar className="h-3.5 w-3.5 text-cyber-cyan" />
-                            Joined {joinedDate.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                            Joined{' '}
+                            {joinedDate.toLocaleDateString(undefined, {
+                              month: 'short',
+                              year: 'numeric',
+                            })}
                           </span>
                         )}
                         {profileData.website && (
@@ -454,7 +873,6 @@ const ProfilePage = () => {
                       </div>
                     </div>
                   </div>
-
                   <div className="flex flex-col items-center gap-4">
                     <div className="w-full sm:w-72">
                       <div className="flex items-center justify-between text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
@@ -478,8 +896,71 @@ const ProfilePage = () => {
                       <RewardToken type="badge" value={`${profileData.badges?.length ?? 0}`} label="Badges" accentColor="#FF6B6B" />
                       <RewardToken type="bonus" value={`${profileData.reputation ?? 0}`} label="Reputation" accentColor="#7C3AED" />
                     </div>
+                    {viewingOwnProfile && (
+                      <div className="flex flex-wrap justify-center gap-2 text-[10px] font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        <button
+                          type="button"
+                          onClick={() => setEditMode((prev) => !prev)}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/50 px-3 py-1.5 hover:border-cyber-blue/50 hover:text-white transition"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                          {editMode ? 'Cancel' : 'Edit Profile'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => bannerInputRef.current?.click()}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/50 px-3 py-1.5 hover:border-cyber-purple/50 hover:text-white transition"
+                          disabled={bannerUploading}
+                        >
+                          <ImageIcon className="h-3.5 w-3.5" />
+                          {bannerUploading ? 'Uploading…' : 'Update Banner'}
+                        </button>
+                        <input
+                          ref={bannerInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleBannerUpload}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
+                {featuredBadges.length > 0 && (
+                  <div className="relative z-10 border-t border-white/10 bg-black/40 px-6 pb-6 sm:px-10 sm:pb-10">
+                    <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                      {featuredBadges.map((badge) => {
+                        const accent = badge.accent ?? BADGE_LIBRARY[badge.slug ?? '']?.accent ?? '#0EA5E9';
+                        return (
+                          <div
+                            key={`spotlight-${badge.slug}`}
+                            className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-black/70 via-black/60 to-black/30 p-5"
+                            style={{ boxShadow: `0 0 40px ${accent}22` }}
+                          >
+                            <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-white/5 to-transparent" />
+                            <div className="relative flex items-center gap-4">
+                              <div
+                                className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-black/60"
+                                style={{ boxShadow: `0 0 24px ${accent}33` }}
+                              >
+                                <Award className="h-6 w-6" style={{ color: accent }} />
+                              </div>
+                              <div>
+                                <p className="font-orbitron text-xs uppercase tracking-[0.4em] text-gray-400">Spotlight</p>
+                                <h3 className="font-orbitron text-base uppercase tracking-[0.3em] text-white">
+                                  {badge.title ?? badge.slug}
+                                </h3>
+                                {badge.description && (
+                                  <p className="mt-1 font-exo text-xs text-gray-400">{badge.description}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </motion.section>
 
               <motion.section
@@ -513,6 +994,7 @@ const ProfilePage = () => {
                   {(profileData.badges?.length ?? 0) > 0 ? (
                     profileData.badges.map((badge) => {
                       const accent = badge.accent ?? BADGE_LIBRARY[badge.slug ?? '']?.accent ?? '#00E0FF';
+                      const isFeatured = badgeShowcase.includes(badge.slug);
                       return (
                         <div
                           key={badge.slug ?? badge.title}
@@ -536,9 +1018,7 @@ const ProfilePage = () => {
                                 {badge.title ?? badge.slug ?? 'Badge'}
                               </h3>
                               {badge.description && (
-                                <p className="mt-1 text-xs font-exo text-gray-400">
-                                  {badge.description}
-                                </p>
+                                <p className="mt-1 text-xs font-exo text-gray-400">{badge.description}</p>
                               )}
                               {badge.earned_at && (
                                 <p className="mt-2 text-[10px] font-exo uppercase tracking-[0.3em] text-gray-500">
@@ -547,6 +1027,21 @@ const ProfilePage = () => {
                               )}
                             </div>
                           </div>
+                          {viewingOwnProfile && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleBadgeSpotlight(badge.slug)}
+                              className={`absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/50 transition ${
+                                isFeatured ? 'text-amber-300' : 'text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              <Star
+                                className="h-4 w-4"
+                                fill={isFeatured ? '#FCD34D' : 'transparent'}
+                                strokeWidth={isFeatured ? 1 : 1.5}
+                              />
+                            </button>
+                          )}
                         </div>
                       );
                     })
@@ -623,7 +1118,10 @@ const ProfilePage = () => {
                             </div>
                             <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.35em] text-gray-400">
                               <Zap className="h-3.5 w-3.5 text-cyber-cyan" />
-                              {new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              {new Date(entry.created_at).toLocaleDateString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                              })}
                             </div>
                           </div>
                           <div className="mt-4 rounded-xl border border-white/5 bg-black/60 p-4">
@@ -652,6 +1150,276 @@ const ProfilePage = () => {
                   </div>
                 )}
               </motion.section>
+
+              {viewingOwnProfile && (
+                <motion.section
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.12 }}
+                  className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]"
+                >
+                  <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+                    <div className="mb-6 flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="font-orbitron text-2xl font-semibold uppercase tracking-[0.35em]">
+                          Operative Profile
+                        </h2>
+                        <p className="mt-2 font-exo text-sm text-gray-400">
+                          Update your public identity across ClawNet.
+                        </p>
+                      </div>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        <UserCog className="h-3.5 w-3.5 text-cyber-cyan" />
+                        {editMode ? 'Editing' : 'Preview'}
+                      </div>
+                    </div>
+                    {isFallback && (
+                      <div className="mb-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs font-exo text-amber-100/90">
+                        Fallback profile active. Changes will not persist until Supabase migrations are applied.
+                      </div>
+                    )}
+                    <div className="space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                          Display Name
+                          <input
+                            type="text"
+                            name="displayName"
+                            value={formState.displayName}
+                            onChange={handleFormChange}
+                            readOnly={!editMode || disableEdits}
+                            className={`w-full rounded-lg border bg-black/40 px-4 py-3 font-exo text-sm text-white transition focus:outline-none focus:ring-2 focus:ring-cyber-blue/60 ${
+                              !editMode || disableEdits
+                                ? 'border-white/10 text-gray-400 cursor-not-allowed'
+                                : 'border-white/10 hover:border-cyber-blue/40'
+                            }`}
+                            placeholder="ClawNet Operative"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                          Pronouns
+                          <input
+                            type="text"
+                            name="pronouns"
+                            value={formState.pronouns}
+                            onChange={handleFormChange}
+                            readOnly={!editMode || disableEdits}
+                            className={`w-full rounded-lg border bg-black/40 px-4 py-3 font-exo text-sm text-white transition focus:outline-none focus:ring-2 focus:ring-cyber-blue/60 ${
+                              !editMode || disableEdits
+                                ? 'border-white/10 text-gray-400 cursor-not-allowed'
+                                : 'border-white/10 hover:border-cyber-blue/40'
+                            }`}
+                            placeholder="They/Them"
+                          />
+                        </label>
+                      </div>
+                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                        Bio
+                        <textarea
+                          name="bio"
+                          value={formState.bio}
+                          onChange={handleFormChange}
+                          readOnly={!editMode || disableEdits}
+                          rows={4}
+                          className={`w-full rounded-lg border bg-black/40 px-4 py-3 font-exo text-sm text-white transition focus:outline-none focus:ring-2 focus:ring-cyber-blue/60 ${
+                            !editMode || disableEdits
+                              ? 'border-white/10 text-gray-400 cursor-not-allowed'
+                              : 'border-white/10 hover:border-cyber-blue/40'
+                          }`}
+                          placeholder="Tell the network about your specialties."
+                        />
+                      </label>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                          Location
+                          <input
+                            type="text"
+                            name="location"
+                            value={formState.location}
+                            onChange={handleFormChange}
+                            readOnly={!editMode || disableEdits}
+                            className={`w-full rounded-lg border bg-black/40 px-4 py-3 font-exo text-sm text-white transition focus:outline-none focus:ring-2 focus:ring-cyber-blue/60 ${
+                              !editMode || disableEdits
+                                ? 'border-white/10 text-gray-400 cursor-not-allowed'
+                                : 'border-white/10 hover:border-cyber-blue/40'
+                            }`}
+                            placeholder="Unknown Grid Node"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                          Website
+                          <input
+                            type="text"
+                            name="website"
+                            value={formState.website}
+                            onChange={handleFormChange}
+                            readOnly={!editMode || disableEdits}
+                            className={`w-full rounded-lg border bg-black/40 px-4 py-3 font-exo text-sm text-white transition focus:outline-none focus:ring-2 focus:ring-cyber-blue/60 ${
+                              !editMode || disableEdits
+                                ? 'border-white/10 text-gray-400 cursor-not-allowed'
+                                : 'border-white/10 hover:border-cyber-blue/40'
+                            }`}
+                            placeholder="clawnet.network"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    {editMode && (
+                      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-xs font-exo text-gray-400">
+                          Tip: Website links are normalised with HTTPS. Badge spotlight remembers your top three picks.
+                        </p>
+                        <motion.button
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.97 }}
+                          onClick={handleSaveProfile}
+                          disabled={savingProfile || disableEdits}
+                          className="inline-flex items-center gap-2 rounded-lg border border-cyber-blue/40 bg-cyber-blue/10 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.35em] text-cyber-blue transition-all hover:bg-cyber-blue/20 hover:text-white disabled:cursor-not-allowed disabled:border-white/10 disabled:text-gray-400"
+                        >
+                          <Save className="h-4 w-4" />
+                          {savingProfile ? 'Saving…' : 'Save Profile'}
+                        </motion.button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-6">
+                    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+                      <div className="mb-5 flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-orbitron text-lg uppercase tracking-[0.3em]">Preferences</h3>
+                          <p className="mt-1 font-exo text-xs text-gray-400">
+                            Tailor your notifications and visibility.
+                          </p>
+                        </div>
+                        <Settings2 className="h-5 w-5 text-cyber-cyan" />
+                      </div>
+                      {preferencesDisabledMessage && (
+                        <div className="mb-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-xs font-exo text-gray-300">
+                          {preferencesDisabledMessage}
+                        </div>
+                      )}
+                      <div className="space-y-4">
+                        {[
+                          {
+                            key: 'missionAlerts',
+                            label: 'Mission Alerts',
+                            description: 'Receive push and email alerts when new missions go live.',
+                            icon: Target,
+                          },
+                          {
+                            key: 'weeklyDigest',
+                            label: 'Weekly Digest',
+                            description: 'Get a curated recap of mission progress every Monday.',
+                            icon: Bell,
+                          },
+                          {
+                            key: 'emailUpdates',
+                            label: 'Critical Updates',
+                            description: 'Stay informed about security advisories and claw-wide notices.',
+                            icon: Mail,
+                          },
+                          {
+                            key: 'showcasePublic',
+                            label: 'Public Showcase',
+                            description: 'Allow other operatives to view your badge spotlight.',
+                            icon: Eye,
+                          },
+                          {
+                            key: 'darkInterface',
+                            label: 'Dark Interface',
+                            description: 'Prioritise the cyber-night interface on supported devices.',
+                            icon: Globe,
+                          },
+                        ].map(({ key, label, description, icon: Icon }) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => handlePreferenceToggle(key)}
+                            disabled={disableEdits}
+                            className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                              preferencesForm[key]
+                                ? 'border-cyber-blue/50 bg-cyber-blue/10'
+                                : 'border-white/10 bg-black/40 hover:border-cyber-blue/40'
+                            } ${disableEdits ? 'cursor-not-allowed opacity-60' : ''}`}
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <Icon className="h-4 w-4 text-cyber-cyan" />
+                                <p className="font-orbitron text-xs uppercase tracking-[0.3em] text-gray-200">
+                                  {label}
+                                </p>
+                              </div>
+                              <p className="mt-1 font-exo text-xs text-gray-400">{description}</p>
+                            </div>
+                            <motion.span
+                              animate={{ backgroundColor: preferencesForm[key] ? '#22d3ee55' : '#ffffff10' }}
+                              className={`relative flex h-6 w-11 items-center rounded-full border transition ${
+                                preferencesForm[key] ? 'border-cyber-cyan/60' : 'border-white/10'
+                              }`}
+                            >
+                              <motion.span
+                                layout
+                                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                                className={`absolute h-4 w-4 rounded-full bg-white shadow ${
+                                  preferencesForm[key] ? 'right-1' : 'left-1'
+                                }`}
+                              />
+                            </motion.span>
+                          </button>
+                        ))}
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleSavePreferences}
+                        disabled={disableEdits || savingPreferences}
+                        className="mt-6 inline-flex items-center gap-2 rounded-lg border border-cyber-blue/40 bg-cyber-blue/10 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.3em] text-cyber-blue transition hover:bg-cyber-blue/20 hover:text-white disabled:cursor-not-allowed disabled:border-white/10 disabled:text-gray-400"
+                      >
+                        <Settings2 className="h-4 w-4" />
+                        {savingPreferences ? 'Saving…' : 'Save Preferences'}
+                      </motion.button>
+                    </div>
+                    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
+                      <div className="mb-5 flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-orbitron text-lg uppercase tracking-[0.3em]">
+                            Account & Security
+                          </h3>
+                          <p className="mt-1 font-exo text-xs text-gray-400">
+                            Maintain your operative credentials.
+                          </p>
+                        </div>
+                        <Shield className="h-5 w-5 text-cyber-cyan" />
+                      </div>
+                      <form className="space-y-4" onSubmit={handleEmailUpdate}>
+                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                          Email Address
+                          <input
+                            type="email"
+                            value={emailForm}
+                            onChange={(event) => setEmailForm(event.target.value)}
+                            className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-3 font-exo text-sm text-white transition focus:outline-none focus:ring-2 focus:ring-cyber-blue/60"
+                            placeholder="you@clawnet.network"
+                          />
+                        </label>
+                        <p className="text-[11px] font-exo text-gray-500">
+                          Updating your email triggers a verification email. The new address becomes active once confirmed.
+                        </p>
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          type="submit"
+                          disabled={savingEmail}
+                          className="inline-flex items-center gap-2 rounded-lg border border-cyber-blue/40 bg-cyber-blue/10 px-4 py-2 text-xs font-orbitron uppercase tracking-[0.3em] text-cyber-blue transition hover:bg-cyber-blue/20 hover:text-white disabled:cursor-not-allowed disabled:border-white/10 disabled:text-gray-400"
+                        >
+                          <Mail className="h-4 w-4" />
+                          {savingEmail ? 'Sending…' : 'Update Email'}
+                        </motion.button>
+                      </form>
+                    </div>
+                  </div>
+                </motion.section>
+              )}
             </div>
           )
         )}

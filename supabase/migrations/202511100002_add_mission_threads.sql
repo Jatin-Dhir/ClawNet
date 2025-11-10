@@ -27,7 +27,7 @@ create table if not exists public.mission_posts (
     status text default 'visible',
     created_at timestamptz default now(),
     updated_at timestamptz default now(),
-    created_by uuid not null
+    created_by uuid
 );
 
 create trigger mission_posts_updated_at

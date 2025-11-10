@@ -27,10 +27,7 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
-  Edit,
   Star,
-  TrendingDown,
-  Bell,
   Send,
   Lock,
 } from 'lucide-react';
@@ -48,8 +45,7 @@ const FALLBACK_ADMIN_EMAILS = [
 
 const AdminDashboard = () => {
   const { session, profile } = useAuth();
-  const outletContext = typeof useOutletContext === 'function' ? useOutletContext() : {};
-  const { triggerTransition, onSignInClick } = outletContext || {};
+  const { triggerTransition, onSignInClick } = useOutletContext() || {};
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
   const [loading, setLoading] = useState(true);
@@ -141,6 +137,37 @@ const AdminDashboard = () => {
       return updated;
     });
   }, [serviceRequests]);
+
+  const fetchMissionThreads = useCallback(async () => {
+    if (!isAuthorized) return;
+    setMissionThreadsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('mission_threads')
+        .select(`
+          id,
+          mission_id,
+          title,
+          status,
+          is_locked,
+          mission:missions_featured (
+            id,
+            slug,
+            title,
+            band
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setMissionThreads(data ?? []);
+    } catch (error) {
+      console.error('Error fetching mission threads:', error);
+      toast.error('Failed to load mission threads');
+    } finally {
+      setMissionThreadsLoading(false);
+    }
+  }, [isAuthorized]);
 
   // Verify admin access against Supabase profile (with fallback email allow list)
   useEffect(() => {
@@ -617,37 +644,6 @@ const AdminDashboard = () => {
       console.error('Error logging admin action:', error);
     }
   };
-
-  const fetchMissionThreads = useCallback(async () => {
-    if (!isAuthorized) return;
-    setMissionThreadsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('mission_threads')
-        .select(`
-          id,
-          mission_id,
-          title,
-          status,
-          is_locked,
-          mission:missions_featured (
-            id,
-            slug,
-            title,
-            band
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setMissionThreads(data ?? []);
-    } catch (error) {
-      console.error('Error fetching mission threads:', error);
-      toast.error('Failed to load mission threads');
-    } finally {
-      setMissionThreadsLoading(false);
-    }
-  }, [isAuthorized]);
 
   const toggleMissionThread = async (thread, nextLocked) => {
     const toastId = toast.loading(nextLocked ? 'Locking thread…' : 'Unlocking thread…');

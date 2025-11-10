@@ -3,6 +3,47 @@ import { supabase } from '../supabaseClient';
 
 const AuthContext = createContext();
 
+const DEFAULT_PROFILE_FIELDS = {
+  display_name: null,
+  avatar_url: null,
+  banner_url: null,
+  bio: null,
+  location: null,
+  website: null,
+  pronouns: null,
+  xp: 0,
+  badges: [],
+  reputation: 0,
+  preferences: {
+    missionAlerts: true,
+    weeklyDigest: true,
+    showcasePublic: true,
+    emailUpdates: true,
+    darkInterface: true,
+  },
+  badge_showcase_order: [],
+};
+
+const applyProfileDefaults = (profile) => {
+  if (!profile) return null;
+  const merged = { ...DEFAULT_PROFILE_FIELDS, ...profile };
+  if (!Array.isArray(merged.badges)) {
+    merged.badges = [];
+  }
+  if (!Array.isArray(merged.badge_showcase_order)) {
+    merged.badge_showcase_order = [];
+  }
+  if (merged.preferences == null || typeof merged.preferences !== 'object') {
+    merged.preferences = DEFAULT_PROFILE_FIELDS.preferences;
+  } else {
+    merged.preferences = {
+      ...DEFAULT_PROFILE_FIELDS.preferences,
+      ...merged.preferences,
+    };
+  }
+  return merged;
+};
+
 const buildFallbackProfile = (session) => {
   if (!session?.user) return null;
 
@@ -18,11 +59,12 @@ const buildFallbackProfile = (session) => {
     `user-${session.user.id.slice(0, 6)}`;
   const normalizedUsername = rawUsername && rawUsername.length >= 3 ? rawUsername : `user-${session.user.id.slice(0, 6)}`;
 
-  return {
+  return applyProfileDefaults({
     id: session.user.id,
     username: normalizedUsername,
     avatar_url: metadata.avatar_url || metadata.picture || null,
-  };
+    display_name: metadata.full_name || normalizedUsername,
+  });
 };
 
 export const AuthProvider = ({ children }) => {
@@ -85,7 +127,7 @@ export const AuthProvider = ({ children }) => {
         if (cancelled) return;
 
         if (!error && data) {
-          setProfile(data);
+          setProfile(applyProfileDefaults(data));
           return;
         }
 
@@ -97,11 +139,21 @@ export const AuthProvider = ({ children }) => {
           id: fallback.id,
           username: fallback.username,
           avatar_url: fallback.avatar_url,
+          display_name: fallback.display_name,
+          bio: fallback.bio,
+          location: fallback.location,
+          website: fallback.website,
+          pronouns: fallback.pronouns,
+          xp: fallback.xp,
+          badges: fallback.badges,
+          reputation: fallback.reputation,
+          preferences: fallback.preferences,
+          badge_showcase_order: fallback.badge_showcase_order,
         };
 
         const { data: insertData, error: insertError } = await supabase
           .from('profiles')
-          .insert(defaultProfile)
+          .upsert(defaultProfile, { onConflict: 'id' })
           .select('*')
           .single();
 
@@ -111,7 +163,7 @@ export const AuthProvider = ({ children }) => {
           throw insertError;
         }
 
-        setProfile(insertData);
+        setProfile(applyProfileDefaults(insertData));
       } catch (fetchError) {
         if (!cancelled) {
           console.error('Error ensuring profile:', fetchError);
@@ -152,8 +204,9 @@ export const AuthProvider = ({ children }) => {
             throw error;
           }
 
-          setProfile(data);
-          return data;
+          const hydrated = applyProfileDefaults(data);
+          setProfile(hydrated);
+          return hydrated;
         } catch (error) {
           console.error('Error refreshing profile:', error);
           const fallback = buildFallbackProfile(session);
