@@ -1011,6 +1011,30 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleFlagMissionPost = async (postId) => {
+    if (!postId || !session?.user) {
+      toast.error('Unable to flag post. Please sign in.');
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('flagged_content')
+        .insert({
+          content_type: 'mission_post',
+          content_id: postId,
+          reporter_id: session.user.id,
+          reason: 'Admin flagged for review',
+          status: 'pending',
+        });
+      if (error) throw error;
+      toast.success('Post flagged for review.');
+      fetchFlaggedContent();
+    } catch (error) {
+      console.error('Error flagging post:', error);
+      toast.error(error.message ?? 'Failed to flag post.');
+    }
+  };
+
   const handleMissionThreadToggle = async (mission, nextLocked) => {
     if (!mission?.thread) {
       toast.error('This mission does not have a command thread yet.');
@@ -2007,16 +2031,16 @@ const AdminDashboard = () => {
 
           {activeTab === 'missions' && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="grid gap-6 xl:grid-cols-[1.05fr_1.35fr]">
+              <div className="grid gap-6 xl:grid-cols-[1fr_1.4fr]">
                 <div className="space-y-6">
-                  <div className="rounded-3xl border border-white/10 bg-white/5 p-5 sm:p-6">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-lg shadow-[0_20px_50px_-32px_rgba(0,0,0,0.7)] p-5 sm:p-6">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
                       <div>
-                        <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3 text-white">
+                        <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3 text-white tracking-[0.05em]">
                           <Target className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                           Mission Control
                         </h2>
-                        <p className="font-exo text-sm text-gray-400">
+                        <p className="font-exo text-sm text-gray-400 mt-1.5 leading-relaxed">
                           Publish, schedule, and moderate operative assignments.
                         </p>
                       </div>
@@ -2067,42 +2091,42 @@ const AdminDashboard = () => {
                               type="button"
                               key={mission.id}
                               onClick={() => handleMissionSelect(mission)}
-                              className={`w-full text-left rounded-2xl border px-4 py-4 transition-all ${
+                              className={`w-full text-left rounded-xl border px-4 py-3.5 transition-all ${
                                 isActive
-                                  ? 'border-cyber-blue/70 bg-cyber-blue/15 shadow-lg shadow-cyber-blue/30'
-                                  : 'border-white/10 bg-white/5 hover:border-cyber-blue/30'
+                                  ? 'border-cyber-blue/60 bg-cyber-blue/10 shadow-[0_8px_24px_-12px_rgba(0,224,255,0.4)]'
+                                  : 'border-white/10 bg-white/[0.02] hover:border-cyber-blue/40 hover:bg-white/[0.04]'
                               }`}
                             >
                               <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <p className="font-orbitron text-base text-white">{mission.title}</p>
-                                  <p className="font-exo text-xs text-gray-400 mt-1">
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-exo text-sm font-semibold text-white leading-snug truncate">{mission.title}</p>
+                                  <p className="font-exo text-xs text-gray-400 mt-1 leading-relaxed">
                                     {mission.band || mission.category || 'Operation'}
                                   </p>
                                 </div>
-                                <span className="rounded-full border border-white/15 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.35em] text-gray-300">
+                                <span className="flex-shrink-0 rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-exo font-medium uppercase tracking-[0.2em] text-gray-300">
                                   {mission.difficulty || 'Unrated'}
                                 </span>
                               </div>
-                              <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-orbitron uppercase tracking-[0.35em] text-gray-400">
-                                <span className="rounded-md border border-white/15 px-2 py-0.5">
+                              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-exo font-medium text-gray-400">
                                   {mission.slot_type}
                                 </span>
                                 {mission.status && (
-                                  <span className="rounded-md border border-white/15 px-2 py-0.5">
+                                  <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-exo font-medium text-gray-400">
                                     {mission.status}
                                   </span>
                                 )}
                                 <span
-                                  className={`rounded-md border px-2 py-0.5 ${
+                                  className={`rounded-md border px-2 py-0.5 text-[10px] font-exo font-medium ${
                                     mission.thread
                                       ? mission.thread.is_locked
-                                        ? 'border-red-500/40 text-red-300'
-                                        : 'border-cyber-blue/50 text-cyber-blue'
-                                      : 'border-white/15 text-gray-400'
+                                        ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                                        : 'border-cyber-blue/50 bg-cyber-blue/10 text-cyber-blue'
+                                      : 'border-white/10 bg-white/5 text-gray-400'
                                   }`}
                                 >
-                                  {mission.thread ? threadState : 'Thread Pending'}
+                                  {mission.thread ? threadState : 'No Thread'}
                                 </span>
                               </div>
                             </button>
@@ -2154,11 +2178,11 @@ const AdminDashboard = () => {
                 </div>
 
                 <div className="space-y-6">
-                  <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-lg shadow-[0_20px_50px_-32px_rgba(0,0,0,0.7)] p-6 sm:p-8">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                       <div>
-                        <h3 className="font-orbitron text-xl text-white">Mission Details</h3>
-                        <p className="font-exo text-xs text-gray-400">
+                        <h3 className="font-orbitron text-xl font-bold text-white tracking-[0.05em]">Mission Details</h3>
+                        <p className="font-exo text-sm text-gray-400 mt-1.5 leading-relaxed">
                           Configure copy, slots, and rewards for the selected mission.
                         </p>
                       </div>
@@ -2175,32 +2199,32 @@ const AdminDashboard = () => {
                     </div>
 
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Title
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Title</span>
                         <input
                           type="text"
                           value={missionForm.title}
                           onChange={(event) => handleMissionInputChange('title', event.target.value)}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                           placeholder="Mission title"
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Slug
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Slug</span>
                         <input
                           type="text"
                           value={missionForm.slug}
                           onChange={(event) => handleMissionInputChange('slug', event.target.value)}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                           placeholder="mission-identifier"
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Slot Type
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Slot Type</span>
                         <select
                           value={missionForm.slot_type}
                           onChange={(event) => handleMissionInputChange('slot_type', event.target.value)}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                         >
                           <option value="seasonal">Seasonal</option>
                           <option value="weekly">Weekly</option>
@@ -2208,155 +2232,145 @@ const AdminDashboard = () => {
                           <option value="quick">Quick</option>
                         </select>
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Slot Position
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Slot Position</span>
                         <input
                           type="number"
                           min="1"
                           max="3"
                           value={missionForm.slot_position}
                           onChange={(event) => handleMissionInputChange('slot_position', event.target.value)}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Band
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Band</span>
                         <input
                           type="text"
                           value={missionForm.band}
                           onChange={(event) => handleMissionInputChange('band', event.target.value)}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                           placeholder="Weekly Assignment"
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Category
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Category</span>
                         <input
                           type="text"
                           value={missionForm.category}
                           onChange={(event) => handleMissionInputChange('category', event.target.value)}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                           placeholder="Core Operation"
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Difficulty
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Difficulty</span>
                         <input
                           type="text"
                           value={missionForm.difficulty}
                           onChange={(event) => handleMissionInputChange('difficulty', event.target.value)}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                           placeholder="Advanced"
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Difficulty Color
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Difficulty Color</span>
                         <input
                           type="color"
                           value={missionForm.difficulty_color}
                           onChange={(event) => handleMissionInputChange('difficulty_color', event.target.value)}
-                          className="h-10 w-full rounded-lg border border-white/10 bg-black/30 focus:border-cyber-blue focus:outline-none"
+                          className="h-10 w-full rounded-lg border border-white/10 bg-black/40 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Accent Glow
-                        <input
-                          type="text"
-                          value={missionForm.accent_glow}
-                          onChange={(event) => handleMissionInputChange('accent_glow', event.target.value)}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
-                          placeholder="Optional CSS color or gradient"
-                        />
-                      </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Status
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Status</span>
                         <input
                           type="text"
                           value={missionForm.status}
                           onChange={(event) => handleMissionInputChange('status', event.target.value)}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                           placeholder="Live • Ends in 6d"
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Deadline
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Deadline</span>
                         <input
                           type="datetime-local"
                           value={missionForm.deadline}
                           onChange={(event) => handleMissionInputChange('deadline', event.target.value)}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                         />
                       </label>
                     </div>
 
-                    <div className="space-y-4 mt-5">
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Summary
+                    <div className="space-y-4 mt-6">
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Summary</span>
                         <textarea
                           value={missionForm.summary}
                           onChange={(event) => handleMissionInputChange('summary', event.target.value)}
                           rows={3}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition resize-none"
                           placeholder="High-level mission overview..."
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Objectives
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Objectives</span>
                         <textarea
                           value={missionForm.objectives}
                           onChange={(event) => handleMissionInputChange('objectives', event.target.value)}
                           rows={4}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition resize-none"
                           placeholder="One objective per line"
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Requirements
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Requirements</span>
                         <textarea
                           value={missionForm.requirements}
                           onChange={(event) => handleMissionInputChange('requirements', event.target.value)}
                           rows={3}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition resize-none"
                           placeholder="Prerequisites, tools, reputation level..."
                         />
                       </label>
-                      <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                        Hints / Signals
+                      <label className="flex flex-col gap-2">
+                        <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Hints / Signals</span>
                         <textarea
                           value={missionForm.hints}
                           onChange={(event) => handleMissionInputChange('hints', event.target.value)}
                           rows={3}
-                          className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none"
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition resize-none"
                           placeholder="Optional hints, one per line"
                         />
                       </label>
                       <div className="grid gap-4 sm:grid-cols-3">
-                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                          Reward XP
+                        <label className="flex flex-col gap-2">
+                          <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Reward XP</span>
                           <input
                             type="number"
                             value={missionForm.rewards_xp}
                             onChange={(event) => handleMissionInputChange('rewards_xp', event.target.value)}
-                            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                            className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                           />
                         </label>
-                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                          Reward Badge
+                        <label className="flex flex-col gap-2">
+                          <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Reward Badge</span>
                           <input
                             type="text"
                             value={missionForm.rewards_badge}
                             onChange={(event) => handleMissionInputChange('rewards_badge', event.target.value)}
-                            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                            className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                             placeholder="Signal Interceptor"
                           />
                         </label>
-                        <label className="flex flex-col gap-2 text-xs font-orbitron uppercase tracking-[0.3em] text-gray-400">
-                          Bonus Reward
+                        <label className="flex flex-col gap-2">
+                          <span className="text-xs font-exo font-semibold uppercase tracking-[0.15em] text-gray-300">Bonus Reward</span>
                           <input
                             type="text"
                             value={missionForm.rewards_bonus}
                             onChange={(event) => handleMissionInputChange('rewards_bonus', event.target.value)}
-                            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-cyber-blue focus:outline-none"
+                            className="rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm font-exo text-white placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition"
                             placeholder="Private red-team drill invite"
                           />
                         </label>
@@ -2364,13 +2378,43 @@ const AdminDashboard = () => {
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-white/10 bg-black/40 p-6 sm:p-8">
+                  {/* Mission Analysis */}
+                  {selectedMissionAdminData && (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-lg shadow-[0_20px_50px_-32px_rgba(0,0,0,0.7)] p-5 sm:p-6">
+                      <h3 className="font-orbitron text-lg font-bold text-white mb-4 flex items-center gap-2 tracking-[0.05em]">
+                        <BarChart3 className="w-5 h-5 text-cyber-blue" />
+                        Mission Analysis
+                      </h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                          <p className="text-xs font-exo text-gray-400 mb-1">Submissions</p>
+                          <p className="text-lg font-exo font-bold text-white">{missionPosts.length}</p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                          <p className="text-xs font-exo text-gray-400 mb-1">Thread Status</p>
+                          <p className="text-sm font-exo font-semibold text-cyber-blue">
+                            {selectedMissionAdminData.thread ? (selectedMissionAdminData.thread.is_locked ? 'Paused' : 'Live') : 'None'}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                          <p className="text-xs font-exo text-gray-400 mb-1">Difficulty</p>
+                          <p className="text-sm font-exo font-semibold text-white">{selectedMissionAdminData.difficulty || 'N/A'}</p>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                          <p className="text-xs font-exo text-gray-400 mb-1">Slot Type</p>
+                          <p className="text-sm font-exo font-semibold text-white capitalize">{selectedMissionAdminData.slot_type || 'N/A'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-lg shadow-[0_20px_50px_-32px_rgba(0,0,0,0.7)] p-5 sm:p-6">
                     <div className="flex items-center justify-between gap-3 mb-4">
-                      <h3 className="font-orbitron text-xl text-white flex items-center gap-2">
+                      <h3 className="font-orbitron text-lg font-bold text-white flex items-center gap-2 tracking-[0.05em]">
                         <MessageSquare className="w-5 h-5 text-cyber-blue" />
                         Recent Submissions
                       </h3>
-                      <span className="rounded-md border border-white/10 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.3em] text-gray-400">
+                      <span className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs font-exo font-medium text-gray-400">
                         {missionPosts.length} entries
                       </span>
                     </div>
@@ -2384,27 +2428,38 @@ const AdminDashboard = () => {
                           No submissions yet. Invite operatives to publish their findings.
                         </div>
                       ) : (
-                        <div className="space-y-4 max-h-[28rem] overflow-y-auto pr-1">
+                        <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
                           {missionPosts.map((post) => (
-                            <div key={post.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="font-orbitron text-sm text-white">
+                            <div key={post.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-4 hover:border-cyber-blue/30 transition">
+                              <div className="flex items-start justify-between gap-3 mb-3">
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-exo text-sm font-semibold text-white leading-snug">
                                     {post.profiles?.display_name || post.profiles?.username || 'System'}
                                   </p>
-                                  <p className="font-exo text-[11px] text-gray-500 mt-1">
+                                  <p className="font-exo text-xs text-gray-500 mt-1 leading-relaxed">
                                     {new Date(post.created_at).toLocaleString()}
                                   </p>
                                 </div>
-                                {post.status && post.status !== 'visible' && (
-                                  <span className="rounded-md border border-orange-400/40 bg-orange-500/10 px-2 py-0.5 text-[10px] font-orbitron uppercase tracking-[0.3em] text-orange-300">
-                                    {post.status}
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  {post.status && post.status !== 'visible' && (
+                                    <span className="rounded-md border border-orange-400/40 bg-orange-500/10 px-2 py-0.5 text-[10px] font-exo font-medium text-orange-300">
+                                      {post.status}
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={() => handleFlagMissionPost(post.id)}
+                                    className="p-1.5 rounded-md border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 transition text-red-300"
+                                    title="Flag for review"
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </div>
-                              <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-white/10 bg-black/40 p-3 text-xs font-mono text-gray-200 max-h-48 overflow-y-auto">
-                                {post.body}
-                              </pre>
+                              <div className="rounded-lg border border-white/10 bg-black/40 p-3">
+                                <p className="text-xs font-exo text-gray-200 leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+                                  {post.body}
+                                </p>
+                              </div>
                             </div>
                           ))}
                         </div>
