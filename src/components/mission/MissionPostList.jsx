@@ -3,31 +3,6 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 
-const formatRelativeTime = (value) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'just now';
-
-  const diffMs = Date.now() - date.getTime();
-  const units = [
-    { label: 'year', ms: 1000 * 60 * 60 * 24 * 365 },
-    { label: 'month', ms: 1000 * 60 * 60 * 24 * 30 },
-    { label: 'day', ms: 1000 * 60 * 60 * 24 },
-    { label: 'hour', ms: 1000 * 60 * 60 },
-    { label: 'minute', ms: 1000 * 60 },
-    { label: 'second', ms: 1000 },
-  ];
-
-  for (const unit of units) {
-    if (Math.abs(diffMs) >= unit.ms || unit.label === 'second') {
-      const count = Math.round(diffMs / unit.ms);
-      if (count < 1) return 'just now';
-      const plural = Math.abs(count) === 1 ? unit.label : `${unit.label}s`;
-      return `${Math.abs(count)} ${plural} ago`;
-    }
-  }
-  return 'just now';
-};
-
 const formatTime = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
