@@ -43,6 +43,7 @@ const fallbackThreads = {
       },
     ],
     isFallback: true,
+    is_locked: false,
   },
   'vault-intrusion': {
     id: 'vault-intrusion',
@@ -78,6 +79,7 @@ const fallbackThreads = {
       },
     ],
     isFallback: true,
+    is_locked: false,
   },
   'signal-decode-sprint': {
     id: 'signal-decode-sprint',
@@ -106,6 +108,7 @@ const fallbackThreads = {
       },
     ],
     isFallback: true,
+    is_locked: false,
   },
 };
 
@@ -222,7 +225,7 @@ const MissionThreadPage = () => {
   };
 
   const missionMeta = useMemo(() => thread?.mission ?? null, [thread]);
-  const composerDisabled = thread?.isFallback || thread?.is_locked;
+  const composerDisabled = !thread || thread?.is_locked === true;
 
   return (
     <div className="min-h-screen bg-cyber-black text-white pt-24 pb-16">
@@ -274,7 +277,7 @@ const MissionThreadPage = () => {
                 onPostCreated={handlePostCreated}
                 accentColor={missionMeta?.accent_glow}
                 disabled={composerDisabled}
-                disabledMessage="Live replies will unlock once the mission threads go active."
+                disabledMessage={thread?.is_locked ? "This thread is currently locked. Contact an admin to unlock it." : "Thread is not available."}
               />
             </div>
           </motion.div>
