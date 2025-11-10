@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '../../supabaseClient';
 
@@ -14,6 +14,14 @@ const MissionComposer = ({
   const [body, setBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 128)}px`;
+    }
+  }, [body]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -46,6 +54,9 @@ const MissionComposer = ({
 
       onPostCreated?.(data);
       setBody('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
     } catch (submitError) {
       setError(submitError.message ?? 'Unable to post right now.');
     } finally {
@@ -54,39 +65,45 @@ const MissionComposer = ({
   };
 
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-7">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <header className="flex items-center justify-between">
-          <h2 className="font-orbitron text-sm uppercase tracking-[0.3em] text-white">Share intel</h2>
-          <span className="rounded-md border border-white/20 px-3 py-1 text-[10px] font-orbitron uppercase tracking-[0.3em] text-gray-400">
-            {disabled ? 'Read only' : session ? 'Authenticated' : 'Sign in required'}
-          </span>
-        </header>
-        <textarea
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          rows={4}
-          className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-exo text-sm text-gray-200 placeholder-gray-500 focus:border-cyber-blue focus:outline-none"
-          placeholder={session ? 'Drop your findings, playbooks, or telemetry…' : 'Authenticate to publish your findings…'}
-          disabled={submitting || disabled}
-        />
-        {disabled ? (
-          <p className="text-xs font-exo text-gray-500">{disabledMessage}</p>
-        ) : (
-          error && <p className="text-xs font-exo text-red-400">{error}</p>
-        )}
+    <section className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-lg p-4">
+      <form onSubmit={handleSubmit} className="flex items-end gap-3">
+        <div className="flex-1">
+          <textarea
+            ref={textareaRef}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!disabled && session && body.trim()) {
+                  handleSubmit(e);
+                }
+              }
+            }}
+            rows={1}
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 font-exo text-sm text-gray-200 placeholder-gray-500 focus:border-cyber-blue focus:outline-none focus:ring-1 focus:ring-cyber-blue/30 transition resize-none overflow-y-auto"
+            placeholder={disabled ? disabledMessage : session ? 'Type your message... (Enter to send, Shift+Enter for new line)' : 'Sign in to send messages…'}
+            disabled={submitting || disabled}
+            style={{ minHeight: '44px', maxHeight: '128px' }}
+          />
+          {error && !disabled && (
+            <p className="mt-2 text-xs font-exo text-red-400">{error}</p>
+          )}
+        </div>
         <motion.button
           type="submit"
-          whileHover={{ scale: submitting || disabled ? 1 : 1.02 }}
-          whileTap={{ scale: submitting || disabled ? 1 : 0.98 }}
-          className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2 font-orbitron text-xs uppercase tracking-[0.3em] text-cyber-darker disabled:opacity-60"
+          whileHover={{ scale: submitting || disabled ? 1 : 1.05 }}
+          whileTap={{ scale: submitting || disabled ? 1 : 0.95 }}
+          className="flex-shrink-0 rounded-xl px-5 py-3 font-exo text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed transition"
           style={{
-            background: `linear-gradient(90deg, ${accentColor ?? '#00e0ff'}, ${accentColor ?? '#00f5ff'})`,
-            boxShadow: `0 0 18px ${(accentColor ?? '#00e0ff')}33`,
+            background: disabled 
+              ? 'rgba(255,255,255,0.1)' 
+              : `linear-gradient(135deg, ${accentColor ?? '#00e0ff'}, ${accentColor ?? '#00f5ff'})`,
+            boxShadow: disabled ? 'none' : `0 4px 12px ${(accentColor ?? '#00e0ff')}40`,
           }}
-          disabled={submitting || disabled}
+          disabled={submitting || disabled || !body.trim()}
         >
-          {disabled ? 'Replies Disabled' : submitting ? 'Posting…' : session ? 'Submit' : 'Authenticate'}
+          {submitting ? 'Sending...' : 'Send'}
         </motion.button>
       </form>
     </section>

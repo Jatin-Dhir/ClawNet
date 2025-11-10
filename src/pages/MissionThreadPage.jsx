@@ -178,7 +178,15 @@ const MissionThreadPage = () => {
 
         const { data: postsData, error: postsError } = await supabase
           .from('mission_posts')
-          .select('*')
+          .select(`
+            *,
+            profiles:created_by (
+              id,
+              username,
+              display_name,
+              avatar_url
+            )
+          `)
           .eq('thread_id', data.id)
           .order('created_at', { ascending: true });
 
@@ -254,19 +262,21 @@ const MissionThreadPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="space-y-8"
+            className="space-y-6"
           >
             <MissionThreadSummary thread={thread} />
-            <MissionPostList posts={posts} />
-            <MissionComposer
-              threadId={thread.id}
-              session={session}
-              onRequireAuth={handleRequireAuth}
-              onPostCreated={handlePostCreated}
-              accentColor={missionMeta?.accent_glow}
-              disabled={composerDisabled}
-              disabledMessage="Live replies will unlock once the mission threads go active."
-            />
+            <div className="space-y-4">
+              <MissionPostList posts={posts} />
+              <MissionComposer
+                threadId={thread.id}
+                session={session}
+                onRequireAuth={handleRequireAuth}
+                onPostCreated={handlePostCreated}
+                accentColor={missionMeta?.accent_glow}
+                disabled={composerDisabled}
+                disabledMessage="Live replies will unlock once the mission threads go active."
+              />
+            </div>
           </motion.div>
         )}
       </div>
