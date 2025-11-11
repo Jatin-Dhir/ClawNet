@@ -145,6 +145,7 @@ const AdminDashboard = () => {
   const { triggerTransition, onSignInClick } = useOutletContext() || {};
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
+  const serviceRequestsRef = useRef([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
@@ -233,6 +234,11 @@ const AdminDashboard = () => {
 
   const recentUsersList = useMemo(() => users.slice(0, 6), [users]);
   const recentPostsList = useMemo(() => posts.slice(0, 10), [posts]);
+
+  // Update ref whenever serviceRequests changes
+  useEffect(() => {
+    serviceRequestsRef.current = serviceRequests;
+  }, [serviceRequests]);
 
   useEffect(() => {
     setRequestNotes((prev) => {
@@ -325,24 +331,6 @@ const AdminDashboard = () => {
     verifyAdmin();
   }, [session, profile]);
 
-  useEffect(() => {
-    if (!isAuthorized) return;
-    fetchAnalytics();
-    const interval = setInterval(fetchAnalytics, 30000);
-    return () => clearInterval(interval);
-  }, [isAuthorized]);
-
-  useEffect(() => {
-    if (!isAuthorized) return;
-    fetchMissionThreads();
-  }, [isAuthorized, fetchMissionThreads]);
-
-  useEffect(() => {
-    if (activeTab === 'moderation' && isAuthorized) {
-      fetchFlaggedContent();
-    }
-  }, [activeTab, flaggedFilter, isAuthorized]);
-
   const fetchAnalytics = useCallback(async () => {
     try {
       setIsRefreshing(true);
@@ -393,14 +381,32 @@ const AdminDashboard = () => {
           .limit(50),
       ]);
 
-      const serviceRequestsData = serviceRequestsResult.data || [];
-      const usersData = recentUsersResult.data || [];
-      const postsData = postsResult.data || [];
-      const downloadStatsData = downloadStatsResult.data || [];
-      const analyticsEvents = analyticsEventsResult.data || [];
-      const adminActions = adminActionsResult.data || [];
+      // Handle service requests with error checking - preserve existing data on error
+      if (serviceRequestsResult.error) {
+        console.error('Error fetching service requests:', serviceRequestsResult.error);
+        // Don't clear existing service requests if there's an error
+        // Use the ref to get current state without dependency
+        // Only update if we have valid data
+        console.log('Preserving existing service requests:', serviceRequestsRef.current.length);
+      } else if (serviceRequestsResult.data && Array.isArray(serviceRequestsResult.data)) {
+        const newServiceRequests = serviceRequestsResult.data;
+        console.log('Successfully fetched service requests:', newServiceRequests.length);
+        setServiceRequests(newServiceRequests);
+        serviceRequestsRef.current = newServiceRequests;
+      } else {
+        // If data is missing or invalid, log a warning but preserve existing data
+        console.warn('Service requests data is missing or invalid, preserving existing data');
+        console.log('Current service requests in ref:', serviceRequestsRef.current.length);
+      }
 
-      setServiceRequests(serviceRequestsData);
+      // Handle other data with error checking
+      const usersData = recentUsersResult.error ? [] : (recentUsersResult.data || []);
+      const postsData = postsResult.error ? [] : (postsResult.data || []);
+      const downloadStatsData = downloadStatsResult.error ? [] : (downloadStatsResult.data || []);
+      const analyticsEvents = analyticsEventsResult.error ? [] : (analyticsEventsResult.data || []);
+      const adminActions = adminActionsResult.error ? [] : (adminActionsResult.data || []);
+
+      // Only update users and posts if we have valid data or empty array (to handle initial load)
       setUsers(usersData);
       setPosts(postsData);
 
@@ -496,7 +502,11 @@ const AdminDashboard = () => {
         return acc;
       }, {});
 
-      const pendingRequests = serviceRequestsData.filter((r) => r.status === 'pending').length;
+      // Get current service requests for analytics (use ref if fetch failed to avoid stale closure)
+      const currentServiceRequests = (serviceRequestsResult.error || !serviceRequestsResult.data || !Array.isArray(serviceRequestsResult.data))
+        ? serviceRequestsRef.current 
+        : serviceRequestsResult.data;
+      const pendingRequests = currentServiceRequests.filter((r) => r.status === 'pending').length;
 
       setAnalytics({
         totalUsers: userCountResult.count || 0,
@@ -506,7 +516,7 @@ const AdminDashboard = () => {
         pendingServiceRequests: pendingRequests,
         recentUsers: usersData.slice(0, 6),
         recentPosts: postsData.slice(0, 10),
-        recentServiceRequests: serviceRequestsData.slice(0, 10),
+        recentServiceRequests: currentServiceRequests.slice(0, 10),
         downloadStats,
         eventStats,
         topTags,
@@ -514,11 +524,35 @@ const AdminDashboard = () => {
       });
     } catch (error) {
       console.error('Error fetching analytics:', error);
-      toast.error('Failed to fetch analytics data');
+      // Don't show error toast if service requests still exist (partial failure)
+      // Only show error if this is a critical failure
+      if (!serviceRequestsRef.current || serviceRequestsRef.current.length === 0) {
+        toast.error('Failed to fetch analytics data');
+      } else {
+        console.warn('Partial analytics fetch failure, but existing data preserved');
+      }
     } finally {
       setIsRefreshing(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isAuthorized) return;
+    fetchAnalytics();
+    const interval = setInterval(fetchAnalytics, 30000);
+    return () => clearInterval(interval);
+  }, [isAuthorized, fetchAnalytics]);
+
+  useEffect(() => {
+    if (!isAuthorized) return;
+    fetchMissionThreads();
+  }, [isAuthorized, fetchMissionThreads]);
+
+  useEffect(() => {
+    if (activeTab === 'moderation' && isAuthorized) {
+      fetchFlaggedContent();
+    }
+  }, [activeTab, flaggedFilter, isAuthorized]);
 
   const handleDeletePost = async (postId) => {
     if (!confirm('Are you sure you want to delete this post?')) return;
@@ -640,9 +674,11 @@ const AdminDashboard = () => {
 
       if (error) throw error;
 
-      setServiceRequests((prev) =>
-        prev.map((request) => (request.id === requestId ? { ...request, ...data } : request))
-      );
+      setServiceRequests((prev) => {
+        const updated = prev.map((request) => (request.id === requestId ? { ...request, ...data } : request));
+        serviceRequestsRef.current = updated;
+        return updated;
+      });
 
       toast.success(successMessage, { id: toastId });
       fetchAnalytics();
@@ -1681,21 +1717,29 @@ const AdminDashboard = () => {
           {/* Main Content Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-8 sm:mb-12">
             {/* Recent Service Requests */}
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2" style={{ minHeight: '400px' }}>
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm"
+                className="p-4 sm:p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm h-full"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-3">
                   <h2 className="font-orbitron text-xl sm:text-2xl font-bold flex items-center gap-2 sm:gap-3">
                     <Mail className="w-5 h-5 sm:w-6 sm:h-6 text-cyber-blue" />
                     Service Requests
+                    <span className="ml-2 text-xs font-exo text-gray-500 normal-case font-normal">
+                      ({serviceRequests.length} total)
+                    </span>
                   </h2>
-                  <span className="px-3 py-1 bg-red-500/20 border border-red-500/50 rounded-full text-xs font-exo text-red-400 w-fit">
-                    {pendingRequestCount} Pending
-                  </span>
+                  <div className="flex items-center gap-3">
+                    {isRefreshing && (
+                      <RefreshCw className="w-4 h-4 text-cyber-blue animate-spin" />
+                    )}
+                    <span className="px-3 py-1 bg-red-500/20 border border-red-500/50 rounded-full text-xs font-exo text-red-400 w-fit">
+                      {pendingRequestCount} Pending
+                    </span>
+                  </div>
                 </div>
                 <div className="flex flex-col md:flex-row gap-3 mb-4">
                   <div className="relative flex-1">
@@ -1725,7 +1769,12 @@ const AdminDashboard = () => {
                   </div>
                 </div>
                 <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
-                  {filteredServiceRequests.length > 0 ? (
+                  {isRefreshing && serviceRequests.length === 0 ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="w-6 h-6 text-cyber-blue animate-spin mr-3" />
+                      <span className="text-gray-400 font-exo">Loading service requests...</span>
+                    </div>
+                  ) : filteredServiceRequests.length > 0 ? (
                     filteredServiceRequests.map((request) => {
                       const draftNotes = requestNotes[request.id] ?? '';
                       const notesChanged =
@@ -1812,10 +1861,22 @@ const AdminDashboard = () => {
                         </div>
                       );
                     })
+                  ) : serviceRequests.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Mail className="w-12 h-12 text-gray-600 mx-auto mb-3 opacity-50" />
+                      <p className="text-gray-400 font-exo mb-2">No service requests found</p>
+                      <p className="text-gray-500 font-exo text-xs">
+                        Service requests will appear here when users submit them.
+                      </p>
+                    </div>
                   ) : (
-                    <p className="text-center text-gray-400 font-exo py-8">
-                      No service requests match your filters
-                    </p>
+                    <div className="text-center py-8">
+                      <Filter className="w-12 h-12 text-gray-600 mx-auto mb-3 opacity-50" />
+                      <p className="text-gray-400 font-exo mb-2">No service requests match your filters</p>
+                      <p className="text-gray-500 font-exo text-xs">
+                        Try adjusting your search or filter criteria.
+                      </p>
+                    </div>
                   )}
                 </div>
               </motion.div>
