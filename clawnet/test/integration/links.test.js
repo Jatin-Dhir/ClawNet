@@ -167,15 +167,19 @@ test('two peers link through netem, exchange packets both ways, and no plaintext
 
 test('wrong network id, wrong network key, tampered card, blocklisted id and self-dial are refused', async t => {
   const a = await startPeer(t);
+  // Every dial here is one-shot. A dial made with the default `sticky: true` is remembered
+  // and redialed by the peer manager's maintenance pass after `redialMinMs`, so on a loaded
+  // machine a second, correct `noise` failure for the first address would land among the
+  // reasons asserted below.
 
   const elsewhere = await startPeer(t, { config: { networkId: 'other-net' } });
-  await assert.rejects(a.pm.connect(elsewhere.addr), err => err instanceof HandshakeError && err.reason === 'noise');
+  await assert.rejects(a.pm.connect(elsewhere.addr, { sticky: false }), err => err instanceof HandshakeError && err.reason === 'noise');
 
   const keyed = await startPeer(t, { config: { networkKey: Buffer.alloc(32, 1).toString('base64') } });
   const otherKey = await startPeer(t, { config: { networkKey: Buffer.alloc(32, 2).toString('base64') } });
   // The responder drops a non-member at message 1, so the initiator only sees the close.
-  await assert.rejects(otherKey.pm.connect(keyed.addr), err => err.reason === 'closed');
-  await assert.rejects(a.pm.connect(keyed.addr), err => err.reason === 'closed');
+  await assert.rejects(otherKey.pm.connect(keyed.addr, { sticky: false }), err => err.reason === 'closed');
+  await assert.rejects(a.pm.connect(keyed.addr, { sticky: false }), err => err.reason === 'closed');
 
   // A responder whose card does not verify: the e2e key was swapped after signing.
   const fake = net.createServer(socket => {
@@ -194,11 +198,11 @@ test('wrong network id, wrong network key, tampered card, blocklisted id and sel
   await assert.rejects(a.pm.connect(fakeAddr, { sticky: false }), err => err.reason === 'bad-card');
 
   const blocker = await startPeer(t, { config: { peers: { block: [a.id] } } });
-  await assert.rejects(a.pm.connect(blocker.addr), err => err.reason === 'blocked');
+  await assert.rejects(a.pm.connect(blocker.addr, { sticky: false }), err => err.reason === 'blocked');
   await waitFor(() => data(blocker, 'peer.refused').length === 1);
   assert.equal(data(blocker, 'peer.refused')[0].reason, 'blocked');
 
-  await assert.rejects(a.pm.connect(a.addr), err => err.reason === 'self');
+  await assert.rejects(a.pm.connect(a.addr, { sticky: false }), err => err.reason === 'self');
 
   const reasons = data(a, 'peer.dial_failed').map(e => e.reason);
   assert.deepEqual(reasons, ['noise', 'closed', 'bad-card', 'blocked', 'self']);

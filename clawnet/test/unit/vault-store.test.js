@@ -121,7 +121,9 @@ test('atomicWriteFile removes its temporary file when the rename cannot succeed'
   await mkdir(target);
   await writeFile(join(target, 'keep'), 'precious');
 
-  await assert.rejects(atomicWriteFile(target, 'x'), (err) => {
+  // On Windows this refusal is EPERM, which is retried; the sleeps are skipped so that the
+  // test does not wait out the whole retry window.
+  await assert.rejects(atomicWriteFile(target, 'x', {}, { sleep: async () => {} }), (err) => {
     assert.ok(err instanceof StoreError);
     assert.equal(typeof err.cause.code, 'string');
     return true;
@@ -354,8 +356,60 @@ test('renameWithRetry gives up after a bounded number of attempts', async () => 
       return true;
     },
   );
-  assert.equal(injected.calls.length, 6);
-  assert.deepEqual(waits, [10, 25, 50, 100, 200]);
+  assert.equal(injected.calls.length, 10);
+  assert.deepEqual(waits, [10, 25, 50, 100, 200, 400, 800, 1000, 1000]);
+  assert.ok(waits.reduce((sum, ms) => sum + ms, 0) <= 5000, 'a real permission problem is reported within seconds');
+});
+
+test('renameWithRetry outlasts an EPERM that stays past the old 385 ms window', async (t) => {
+  const dir = await tempDir(t, 'vault');
+  const from = join(dir, 'a');
+  const to = join(dir, 'b');
+  await writeFile(from, 'payload');
+
+  // The failure seen once on Windows while the whole suite ran in parallel: the scanner
+  // held the new file for longer than the first five waits (385 ms) added up to.
+  const waits = [];
+  const injected = failingRename(Array.from({ length: 7 }, () => 'EPERM'));
+  await renameWithRetry(from, to, {
+    platform: 'win32',
+    rename: injected.rename,
+    sleep: async (ms) => {
+      waits.push(ms);
+    },
+  });
+  assert.equal(injected.calls.length, 8);
+  assert.ok(waits.reduce((sum, ms) => sum + ms, 0) > 385);
+  assert.equal(await readFile(to, 'utf8'), 'payload');
+});
+
+test('atomicWriteFile survives a long EPERM during the replace and leaves exactly the new content', async (t) => {
+  const dir = await tempDir(t, 'vault');
+  const target = join(dir, 'state.json');
+  await writeFile(target, 'old');
+
+  const waits = [];
+  const injected = failingRename(Array.from({ length: 7 }, () => 'EPERM'));
+  await atomicWriteFile(target, 'new', {}, {
+    platform: 'win32',
+    rename: injected.rename,
+    sleep: async (ms) => {
+      waits.push(ms);
+    },
+  });
+  assert.equal(injected.calls.length, 8);
+  assert.ok(waits.reduce((sum, ms) => sum + ms, 0) > 385);
+  assert.equal(await readFile(target, 'utf8'), 'new');
+  assert.deepEqual(await listDir(dir), ['state.json'], 'no temporary file is left behind');
+
+  // And when the block never lifts the old content stays, and the temporary file goes.
+  const stuck = failingRename(Array.from({ length: 50 }, () => 'EPERM'));
+  await assert.rejects(
+    atomicWriteFile(target, 'newer', {}, { platform: 'win32', rename: stuck.rename, sleep: async () => {} }),
+    (err) => err instanceof StoreError && err.cause.code === 'EPERM',
+  );
+  assert.equal(await readFile(target, 'utf8'), 'new');
+  assert.deepEqual(await listDir(dir), ['state.json']);
 });
 
 test('renameWithRetry does not retry errors that are not transient', async () => {

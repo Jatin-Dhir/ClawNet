@@ -37,6 +37,7 @@ import {
 } from './discovery/index.js';
 import { ClawNetError, ConfigError, ProtocolError, StateError, StoreError } from './errors.js';
 import { EventBus } from './events.js';
+import { ConversationStore } from './messaging/conversations.js';
 import { ReliableMessenger } from './messaging/reliable.js';
 import { AddressBook } from './peer/address-book.js';
 import { DEFAULT_AGENT, PeerManager } from './peer/peer-manager.js';
@@ -1101,11 +1102,14 @@ export class ClawNode {
   #messenger = null;
   #outboxLog = null;
   #seenLog = null;
+  #conversationLog = null;
+  #conversations = null;
   #peers = null;
   #governor = null;
   #bootstrap = null;
   #multicast = null;
   #sync = null;
+  #datasets = [];
   #listen = null;
   #lockPath = null;
   #runtimePath = null;
@@ -1549,6 +1553,22 @@ export class ClawNode {
     await this.#messenger.open();
     this.#forwarder.onLocal('data.sealed', (packet, info) => this.#messenger.handleData(packet, info));
 
+    // The chat history is the `msg` kind (ARCHITECTURE.md 5.7). The node owns it because
+    // services may not register that kind; the `messages` service only exposes it.
+    this.#conversationLog = this.#storage.log('conversations');
+    await this.#conversationLog.open();
+    this.#conversations = new ConversationStore({
+      selfId: self,
+      messenger: {
+        send: (dst, options) => this.#sendChecked(dst, options),
+        onKind: (kind, handler) => this.#messenger.onKind(kind, handler),
+      },
+      log: this.#conversationLog,
+      events,
+      now: this.#now,
+    });
+    await this.#conversations.open();
+
     this.#peers = new PeerManager({
       identity,
       config,
@@ -1610,6 +1630,7 @@ export class ClawNode {
     for (const name of SERVICE_DATASETS) {
       datasets.push(this.#serviceDatasets.get(name) ?? relayOnlyDataset(name));
     }
+    this.#datasets = datasets;
     const block = new Set(peers.block);
     const allow = new Set(peers.allow);
     const self = this.#identity.nodeId;
@@ -1690,6 +1711,7 @@ export class ClawNode {
       }
     };
     if (this.#messenger !== null) await flushStep('messenger', () => this.#messenger.close());
+    if (this.#conversations !== null) await flushStep('conversations', () => this.#conversations.close());
     if (this.#pex !== null) await flushStep('pex', () => this.#pex.flush());
     if (this.#book !== null) await flushStep('address-book', () => this.#book.flush());
     if (this.#storage !== null) await flushStep('storage', () => this.#storage.closeAll());
@@ -2088,7 +2110,7 @@ export class ClawNode {
   /** @returns {object} the configuration with the network key redacted */
   configView() {
     const view = structuredClone(this.#config);
-    if (view.networkKey !== null) view.networkKey = 'redacted';
+    if (view.networkKey !== null) view.networkKey = '[redacted]';
     return view;
   }
 
@@ -2169,6 +2191,36 @@ export class ClawNode {
     return this.#sendChecked(dst, options);
   }
 
+  /**
+   * Send a chat message and record it in the conversation with `to`.
+   *
+   * @param {string} to destination NodeId
+   * @param {string} text 1 to 16384 bytes of UTF-8
+   * @returns {Promise<object>} the ChatMessage (API.md section 7)
+   * @throws {StateError} `not-running`, `unknown-destination`, `outbox-full`
+   * @throws {ConfigError} for an invalid destination or text
+   */
+  async sendMessage(to, text) {
+    this.#requireRunning();
+    return this.#conversations.send(to, text);
+  }
+
+  /** @returns {object[]} ConversationSummary of every peer, most recently active first */
+  conversations() {
+    return this.#conversations?.list() ?? [];
+  }
+
+  /**
+   * @param {string} peer
+   * @param {{ before?: number, limit?: number }} [options]
+   * @returns {{ items: object[], nextBefore: number | null }} ChatMessages, newest first
+   * @throws {ConfigError} for an invalid peer or paging value
+   */
+  conversation(peer, { before, limit } = {}) {
+    if (this.#conversations === null) return { items: [], nextBefore: null };
+    return this.#conversations.messages(peer, { before, limit });
+  }
+
   /** @returns {object[]} every unacknowledged reliable message, oldest first */
   outbox() {
     return this.#messenger?.pending() ?? [];
@@ -2192,6 +2244,7 @@ export class ClawNode {
       router: this.#router?.stats() ?? {},
       forwarder: this.#forwarder?.stats() ?? {},
       messaging: this.#messenger?.stats() ?? {},
+      conversations: this.#conversations?.stats() ?? {},
       discovery: {
         pex: this.#pex?.stats() ?? {},
         bootstrap: this.#bootstrap?.stats() ?? {},
@@ -2205,6 +2258,11 @@ export class ClawNode {
   /** @returns {object} SyncEngine#stats() */
   syncStats() {
     return this.#sync?.stats() ?? {};
+  }
+
+  /** @returns {Array<{ name: string, entries: number }>} every synchronized dataset and the records it holds */
+  syncDatasets() {
+    return this.#datasets.map((dataset) => ({ name: dataset.name, entries: dataset.size }));
   }
 
   /**

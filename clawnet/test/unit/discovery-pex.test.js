@@ -323,15 +323,25 @@ test('a network copy of our record with a higher seq makes us publish again, hig
 });
 
 test('an equal seq with a greater hash is also answered by jumping past it', async () => {
-  const node = setup();
+  // A fixed identity makes our own record, and so the hash the rival has to beat, the same
+  // on every run. The rival is then found by varying the port, which stays a valid address
+  // for all 65535 candidates, and the search fails loudly instead of quietly looping.
+  const identity = Identity.fromSecret({
+    signSeed: Buffer.alloc(32, 7),
+    linkPrivate: Buffer.alloc(32, 8),
+    e2ePrivate: Buffer.alloc(32, 9),
+  });
+  const node = setup({ identity });
   const published = attachLocal(node);
   node.pex.refresh();
   const mine = published[0];
   let rival = null;
-  for (let k = 1; rival === null; k += 1) {
-    const candidate = recordFor(node.identity, { seq: mine.seq, addrs: [`tcp://198.51.100.${k}:1`] });
+  for (let port = 1; rival === null && port <= 65535; port += 1) {
+    const candidate = recordFor(node.identity, { seq: mine.seq, addrs: [`tcp://198.51.100.1:${port}`] });
     if (recordHash(candidate) > recordHash(mine)) rival = candidate;
   }
+  assert.notEqual(rival, null, 'a record with a greater hash exists among the candidates');
+  assert.equal(rival.seq, mine.seq, 'the tie is on seq alone');
   assert.equal(node.pex.dataset.offer(rival, 'some-peer').accepted, true, 'the greater hash wins the tie');
   await settle();
   assert.equal(published.length, 2);

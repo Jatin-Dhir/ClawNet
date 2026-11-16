@@ -35,11 +35,14 @@ const RENAME_RETRY_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
 const NO_LINK_CODES = new Set(['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EPERM', 'EMLINK']);
 
 /**
- * Waits between rename attempts on Windows, in milliseconds. Six attempts over at most
- * 385 ms: long enough for a virus scanner or indexer to let go of a new file, short
- * enough that a real permission problem is still reported promptly.
+ * Waits between rename attempts on Windows, in milliseconds. Ten attempts over at most
+ * 3.6 s. A virus scanner or indexer normally lets go of a new file within tens of
+ * milliseconds, but while a whole test suite or a busy node saturates the machine the
+ * hold has been seen to outlast a window of 385 ms (an EPERM that surfaced once under
+ * load). The waits grow quickly and the tail is flat, so the common case costs almost
+ * nothing and a real permission problem is still reported within a few seconds.
  */
-const RENAME_BACKOFF_MS = Object.freeze([10, 25, 50, 100, 200]);
+const RENAME_BACKOFF_MS = Object.freeze([10, 25, 50, 100, 200, 400, 800, 1000, 1000]);
 
 /** Largest state file JsonFile will parse unless told otherwise. */
 const DEFAULT_MAX_JSON_BYTES = 64 * 1024 * 1024;
@@ -104,10 +107,12 @@ export async function renameWithRetry(from, to, hooks = {}) {
  * @param {string | Uint8Array} data content; strings are written as UTF-8
  * @param {{ mode?: number }} [options] permission bits for the file (default 0o600;
  *   ignored by Windows)
+ * @param {object} [hooks] injection points; production code passes nothing. They are
+ *   those of `renameWithRetry`: `rename`, `sleep` and `platform`
  * @returns {Promise<void>}
  * @throws {StoreError} on invalid arguments or any I/O failure
  */
-export async function atomicWriteFile(path, data, options = {}) {
+export async function atomicWriteFile(path, data, options = {}, hooks = {}) {
   const { mode = 0o600 } = options;
   requirePath(path);
   requireMode(mode);
@@ -115,7 +120,7 @@ export async function atomicWriteFile(path, data, options = {}) {
     throw new StoreError('data must be a string or a Uint8Array');
   }
   const temp = await writeTemp(path, mode, (handle) => handle.writeFile(data));
-  await commitTemp(temp, path);
+  await commitTemp(temp, path, hooks ?? {});
 }
 
 /**
@@ -1085,9 +1090,9 @@ async function writeTemp(target, mode, fill) {
 }
 
 /** Rename a finished temporary file over its target and make the rename durable. */
-async function commitTemp(temp, target) {
+async function commitTemp(temp, target, hooks = {}) {
   try {
-    await renameWithRetry(temp, target);
+    await renameWithRetry(temp, target, hooks);
   } catch (cause) {
     await unlink(temp).catch(() => {});
     throw cause;
