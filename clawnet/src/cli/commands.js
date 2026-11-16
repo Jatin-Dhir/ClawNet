@@ -65,8 +65,19 @@ export async function resolveNodeId(client, text) {
   if (!/^[a-z2-7]+$/.test(text) || text.length < MIN_PREFIX || text.length > 52) {
     throw new UsageError(`"${text}" is not a node id; give the full id or at least ${MIN_PREFIX} characters of it`);
   }
-  const [topology, peers] = await Promise.all([client.request('GET', '/topology'), client.request('GET', '/peers')]);
-  const known = new Set([...topology.nodes.map((node) => node.id), ...peers.peers.map((peer) => peer.id)]);
+  const [topology, peers, conversations] = await Promise.all([
+    client.request('GET', '/topology'),
+    client.request('GET', '/peers'),
+    // A node you have exchanged messages with can be offline and gone from the topology,
+    // and its conversation must still be reachable by prefix. Not every node runs the
+    // messages service, so a failure here only means there is nothing to add.
+    client.request('GET', '/conversations').catch(() => ({ conversations: [] })),
+  ]);
+  const known = new Set([
+    ...topology.nodes.map((node) => node.id),
+    ...peers.peers.map((peer) => peer.id),
+    ...(conversations.conversations ?? []).map((entry) => entry.peer),
+  ]);
   const matches = [...known].filter((id) => id.startsWith(text));
   if (matches.length === 1) return matches[0];
   if (matches.length === 0) throw new UsageError(`no node known to this node starts with "${text}"`);

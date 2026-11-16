@@ -374,6 +374,30 @@ test('a stale runtime.json (the process is gone) is reported as not running, and
   assert.ok(!wrongToken.err().includes('0'.repeat(64)), 'the token is not echoed');
 });
 
+test('a prefix resolves for a node known only from a conversation, as an offline peer is', async () => {
+  const online = `${'m'.repeat(51)}a`;
+  const offline = `${'k'.repeat(51)}q`;
+  const routes = {
+    '/topology': { nodes: [{ id: online }] },
+    '/peers': { peers: [] },
+    '/conversations': { conversations: [{ peer: offline, count: 3 }] },
+  };
+  const client = { request: async (method, path) => routes[path] };
+  assert.equal(await resolveNodeId(client, offline.slice(0, 8)), offline);
+  assert.equal(await resolveNodeId(client, online.slice(0, 8)), online);
+
+  // A node without the messages service answers that route with an error; ids known from
+  // the topology still resolve, and an unknown prefix is still reported as unknown.
+  const bare = {
+    request: async (method, path) => {
+      if (path === '/conversations') throw new Error('not found');
+      return routes[path];
+    },
+  };
+  assert.equal(await resolveNodeId(bare, online.slice(0, 8)), online);
+  await assert.rejects(resolveNodeId(bare, offline.slice(0, 8)), /no node known/);
+});
+
 test('ids may be shortened to a unique prefix of at least 8 characters', async () => {
   const a = `${'a'.repeat(8)}${'b'.repeat(44)}`.replace(/b{44}$/, 'q'.repeat(44));
   const b = `${'a'.repeat(8)}${'c'.repeat(43)}a`;
