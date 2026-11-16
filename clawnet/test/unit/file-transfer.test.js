@@ -76,12 +76,21 @@ class Net {
   }
 
   /** Advance the clock until `predicate` holds, giving real I/O time to finish between steps. */
-  async until(predicate, { maxSteps = 8000, message = 'the condition' } = {}) {
+  async until(predicate, { maxSteps = 8000, patienceMs = 30000, message = 'the condition' } = {}) {
     for (let i = 0; i < maxSteps; i += 1) {
       if (await predicate()) return;
       this.step();
       await new Promise((resolve) => setImmediate(resolve));
       if (i % 8 === 7) await sleep(1);
+    }
+    // The clock here is virtual but hashing a file and renaming it into place are real, and
+    // on a slow disk, or with antivirus holding a newly written file, they can outlast every
+    // step above. Before giving up, keep going at roughly real-time pace for a while.
+    const deadline = Date.now() + patienceMs;
+    while (Date.now() < deadline) {
+      if (await predicate()) return;
+      this.step();
+      await sleep(STEP_MS);
     }
     const states = this.nodes.map((node) => node.api.list().map((entry) => `${entry.direction}:${entry.state}:${entry.chunksDone}/${entry.chunks}:${entry.error}`).join(','));
     const tail = this.log.slice(-6).map((entry) => `${entry.type}:${entry.kind ?? entry.index}`).join(' ');
@@ -444,6 +453,9 @@ test('several megabytes of random data arrive with the same SHA-256, and the tra
   assert.equal(sent.chunks, Math.ceil(data.length / 32768));
   assert.equal(sent.name, 'renamed.bin');
   await net.until(() => receiver.api.list()[0]?.state === 'completed' && sender.api.get(sent.id).state === 'completed', { message: 'the transfer' });
+  // The state changes before the event is emitted, so wait for the events the test reads below.
+  const completed = (node) => node.events.recent({ types: ['file.completed'] }).length > 0;
+  await net.until(() => completed(sender) && completed(receiver), { message: 'the completion events' });
   assert.equal(hex(sha256(await readFile(join(receiver.downloads, 'renamed.bin')))), hex(sha256(data)));
   assert.equal(sender.api.get(sent.id).sha256, b64(sha256(data)));
   // The clock is virtual while the file I/O is real, so a busy machine can make a stall timer
