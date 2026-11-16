@@ -47,15 +47,20 @@ functions. This keeps them unit-testable without a network and keeps I/O in
 
 ## 3. Identity
 
-- Each node has a long-term **Ed25519 identity key** and a long-term **X25519 static key**.
+- Each node has a long-term **Ed25519 identity key** and two long-term **X25519 keys**: a
+  *link key*, the static key of link handshakes, and an *e2e key*, the key end-to-end
+  messages are sealed to. One key per protocol: the link and end-to-end handshakes never
+  share key material, so a weakness in how one is used cannot be turned against the other.
 - **NodeId** = RFC 4648 base32 (lowercase, no padding) of the 32-byte Ed25519 public key:
   52 characters matching `^[a-z2-7]{52}$`. The id *is* the key, so any signature can be
   checked from the id alone and there is no directory to poison.
-- **Identity card** binds the X25519 key to the identity (the libp2p-noise construction):
+- **Identity card** binds both X25519 keys to the identity (the construction libp2p-noise
+  uses for its static key):
 
   ```
-  card = { "id": NodeId, "dh": b64(x25519 public key), "sig": b64(signature) }
-  signature = Ed25519-Sign(identity key, utf8("clawnet/1/static-key-binding") || 0x00 || x25519 public key)
+  card = { "id": NodeId, "link": b64(link public key), "e2e": b64(e2e public key), "sig": b64(signature) }
+  signature = Ed25519-Sign(identity key,
+                utf8("clawnet/1/static-key-binding") || 0x00 || link public key || e2e public key)
   ```
 
 - Binary values inside JSON are RFC 4648 base64 with padding. Decoders are strict: a value
@@ -77,7 +82,7 @@ cannot complete the handshake.
   protocol versions fail the handshake instead of talking past each other.
 - Message 1 (`-> e`) carries an empty payload. Messages 2 and 3 carry a handshake payload:
   `{ v, card, net, agent, caps, listen, observed, ts }` as canonical JSON.
-- After the handshake each side checks that the Noise remote static key equals `card.dh`
+- After the handshake each side checks that the Noise remote static key equals `card.link`
   and that the card signature verifies. Only then is the peer's NodeId trusted. Then:
   reject self-connections, reject blocklisted ids, enforce the allowlist if one is set.
 - Transport: each record is `u16be length || Noise transport message` (<= 65535 bytes). The
@@ -115,12 +120,24 @@ hop, not the originator.
 
 The body is `u8 scheme || ...`:
 
-- scheme `0x01` — a `Noise_X_25519_ChaChaPoly_SHA256` one-way message to the recipient's
-  static key, with prologue `utf8("clawnet/1/e2e") || 0x00 || utf8(dst) || 0x00 || utf8(id)`.
-  Binding `dst` and `id` means a forwarder cannot re-address or re-label a ciphertext.
+- scheme `0x01` — a `Noise_X_25519_ChaChaPoly_SHA256` one-way exchange from the sender's
+  e2e key to the recipient's e2e key, with prologue
+  `utf8("clawnet/1/e2e") || 0x00 || utf8(dst) || 0x00 || utf8(id)`. Binding `dst` and `id`
+  means a forwarder cannot re-address or re-label a ciphertext.
+
+  ```
+  body = 0x01 || u16be(len M0) || M0 || { u16be(len Mi) || Mi }*
+  ```
+
+  `M0` is the Noise handshake message; its payload is `u32be(total plaintext length)`.
+  Each `Mi` is a Noise transport message from the sender's cipher carrying the next
+  plaintext chunk. Every chunk except the last is exactly 65519 bytes, so there is one
+  valid framing per plaintext, and the recipient rejects a body whose chunks do not add up
+  to the announced length, which is what stops truncation.
+
   Plaintext is `u16be metaLen || meta (canonical JSON) || content`. `meta` always contains
   `kind`, `card` (the sender's identity card) and `ts`. The recipient checks that the Noise
-  remote static key equals `meta.card.dh` and that the card verifies; that authenticates
+  remote static key equals `meta.card.e2e` and that the card verifies; that authenticates
   the sender.
 - scheme `0x02` — ChaCha20-Poly1305 under a transfer key that was itself delivered inside a
   scheme-1 message (used for file chunks; see section 11).
