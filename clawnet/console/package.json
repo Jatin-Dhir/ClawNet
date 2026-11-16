@@ -1,0 +1,21 @@
+{
+  "name": "clawview",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ClawView: the operator console a ClawNet node serves at its control API address.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.7.0",
+    "vite": "6.4.5"
+  }
+}
