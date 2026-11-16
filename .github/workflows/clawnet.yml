@@ -1,0 +1,53 @@
+name: ClawNet engine
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths:
+      - "clawnet/**"
+      - ".github/workflows/clawnet.yml"
+      - "eslint.config.js"
+  pull_request:
+    paths:
+      - "clawnet/**"
+      - ".github/workflows/clawnet.yml"
+      - "eslint.config.js"
+
+# The workflow only reads the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: clawnet-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # The engine has no dependencies, so there is nothing to install.
+      # Every test binds 127.0.0.1 on an ephemeral port; nothing leaves the runner.
+      - name: Run the engine test suite
+        working-directory: clawnet
+        run: npm test
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx eslint clawnet
