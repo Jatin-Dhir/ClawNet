@@ -87,6 +87,12 @@ repositories on the account were checked).
 - Found during the build: the sender signature covered only the handshake hash, so the
   holder of a recipient's key could have swapped a genuine message's content. It now covers
   the content too.
+- Found by CI after everything passed locally:
+  - the CLI could not resolve a shortened node id for a peer that was offline or briefly
+    missing from the topology, even with a conversation open with it (fixed in the code);
+  - two file-transfer tests gave up before real disk work had finished on a slow runner;
+  - a shutdown test assumed the order of events on the stream;
+  - an end-to-end test sent a message before the destination's identity card had arrived.
 - A test that passed or failed depending on which of two random records hashed higher.
 - An atomic file replace that could fail with `EPERM` on Windows under load.
 - A race in the refused-peer integration test.
@@ -102,8 +108,10 @@ agents that wrote the code:
   XXpsk3 and X, message by message.
 - `npx eslint clawnet`: 0 errors, 0 warnings.
 
-On GitHub Actions: the foundation commits passed on Linux, Windows and macOS with Node 22
-and 24. The run for the final commit had not finished when this was written; see section 9.
+On GitHub Actions, the last code change (`0f3d27c`) passed everything: lint, the console
+build, and the full suite on Linux, Windows and macOS with Node 22 and 24. It took four
+runs to get there. The first runs on the finished product failed on machines slower than
+this one, in ways the local runs never showed; section 5 lists what they found.
 
 ## 7. Build and runtime verification
 
@@ -118,9 +126,8 @@ and 24. The run for the final commit had not finished when this was written; see
 
 ## 8. Git commits created
 
-18 commits, from `9c9d220` (repair the commit hook and build toolchain) to `f5601ad`
-(engine README, protocol, threat model, operations), plus the commit that adds this
-report. `git log main..claude/overnight-mesh-engine` lists them; each is one logical unit
+21 code commits, from `9c9d220` (repair the commit hook and build toolchain) to `0f3d27c`
+(the last of three fixes CI prompted), plus the commits that add and update this report. `git log main..claude/overnight-mesh-engine` lists them; each is one logical unit
 (crypto, wire, routing and sync, storage, transport, discovery, forwarding, node runtime,
 casts and files, API and CLI, console, docs).
 
@@ -138,6 +145,11 @@ Everything is pushed to `origin/claude/overnight-mesh-engine`. Nothing was pushe
 - The private-network handshake (XXpsk0) has no published test vector in either source. It
   is cross-checked against the specification only.
 - The CLI has no commands for channels or file transfer yet. The API and console do.
+- A node's identity card travels by peer exchange and can arrive a moment after a route
+  to it exists. Until it does, sending to that node fails with `unknown_destination`
+  rather than waiting.
+- CI found five timing assumptions in the tests in its first runs. The suite is green
+  now, but it has only been run a handful of times on slow machines; more may surface.
 - If two nodes dial each other at almost exactly the handshake timeout apart, both links
   can close; the redial recovers.
 - While a peer is being throttled its keepalives are not read, so its link cost rises.
