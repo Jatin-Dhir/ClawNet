@@ -130,6 +130,12 @@ function encode(value, depth) {
     if (!KEY_PATTERN.test(key)) {
       throw new CanonicalError('object keys must be printable ASCII');
     }
+    // JSON.parse stores "__proto__" as an ordinary own property, but any later
+    // Object.assign or key-by-key copy of that object would swap the copy's prototype.
+    // Nothing in the protocol uses the key, so it is refused outright.
+    if (key === '__proto__') {
+      throw new CanonicalError('the object key "__proto__" is not allowed');
+    }
     parts[i] = `${JSON.stringify(key)}:${encode(value[key], depth + 1)}`;
   }
   return `{${parts.join(',')}}`;

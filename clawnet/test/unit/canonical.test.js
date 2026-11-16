@@ -84,10 +84,12 @@ test('objects without a prototype are accepted', () => {
   assert.equal(canonicalize(value), '{"a":2,"b":1}');
 });
 
-test('a "__proto__" key is treated as data', () => {
-  const value = JSON.parse('{"__proto__":{"x":1},"a":2}');
-  assert.equal(canonicalize(value), '{"__proto__":{"x":1},"a":2}');
-  assert.deepEqual(Object.keys(parseCanonical('{"__proto__":1}')), ['__proto__']);
+test('a "__proto__" key is rejected at any depth', () => {
+  assert.throws(() => canonicalize(JSON.parse('{"__proto__":{"x":1},"a":2}')), CanonicalError);
+  assert.throws(() => canonicalize(JSON.parse('{"a":[{"__proto__":1}]}')), CanonicalError);
+  assert.throws(() => parseCanonical('{"__proto__":1}'), CanonicalError);
+  // Other keys that merely look similar are ordinary data.
+  assert.equal(canonicalize({ __proto: 1, proto__: 2 }), '{"__proto":1,"proto__":2}');
 });
 
 test('nesting limit counts containers, not scalars', () => {

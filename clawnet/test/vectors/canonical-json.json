@@ -208,6 +208,14 @@
     {
       "name": "thirty-three nested arrays",
       "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+    },
+    {
+      "name": "proto key",
+      "input": "{\"__proto__\":1}"
+    },
+    {
+      "name": "nested proto key",
+      "input": "{\"a\":[{\"__proto__\":{}}]}"
     }
   ],
   "rejectStrict": [
@@ -374,6 +382,14 @@
     {
       "name": "thirty-three nested arrays",
       "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+    },
+    {
+      "name": "proto key",
+      "input": "{\"__proto__\":1}"
+    },
+    {
+      "name": "nested proto key",
+      "input": "{\"a\":[{\"__proto__\":{}}]}"
     }
   ]
 }

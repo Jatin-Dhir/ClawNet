@@ -59,6 +59,10 @@ export const Domain = Object.freeze({
   RECORD_PREFIX: `${PROTOCOL}/record/`,
   /** HKDF info for per-message cast keys. */
   CAST: `${PROTOCOL}/cast`,
+  /** Signature by the sender's identity key over the Noise handshake hash of a sealed message. */
+  E2E_AUTH: `${PROTOCOL}/e2e-auth`,
+  /** HKDF info for the key that authenticates discovery beacons in a private network. */
+  BEACON: `${PROTOCOL}/beacon`,
   /** HKDF info for deriving a channel's wire identifier from its key. */
   CHANNEL_ID: `${PROTOCOL}/channel-id`,
   /** Associated-data prefix for file chunks. */
@@ -68,7 +72,9 @@ export const Domain = Object.freeze({
 /** Noise protocol names in use. */
 export const NoiseProtocol = Object.freeze({
   LINK: 'Noise_XX_25519_ChaChaPoly_SHA256',
-  LINK_PSK: 'Noise_XXpsk3_25519_ChaChaPoly_SHA256',
+  // psk0, not psk3: the network key is mixed in before anything else, so a non-member's
+  // first message is rejected before any Diffie-Hellman work is done for it.
+  LINK_PSK: 'Noise_XXpsk0_25519_ChaChaPoly_SHA256',
   E2E: 'Noise_X_25519_ChaChaPoly_SHA256',
 });
 
@@ -76,6 +82,10 @@ export const NoiseProtocol = Object.freeze({
 export const Limits = Object.freeze({
   /** Largest packet (type byte through body) accepted from a peer. */
   MAX_PACKET: 1 << 20,
+  /** Largest sync or gossip packet a node sends, so control traffic never waits long. */
+  MAX_SYNC_PACKET: 64 * 1024,
+  /** Largest routed packet a node sends or forwards, so one packet cannot hold a slow link. */
+  MAX_ROUTED_PACKET: 128 * 1024,
   /** Largest packet header (canonical JSON) in bytes. */
   MAX_HEADER: 8 * 1024,
   /** Largest Noise message, fixed by the Noise specification. */
@@ -94,8 +104,14 @@ export const Limits = Object.freeze({
   MAX_PEER_ADDRS: 16,
 });
 
-/** A NodeId: base32 (RFC 4648, lowercase, unpadded) of a 32-byte Ed25519 public key. */
-export const NODE_ID_PATTERN = /^[a-z2-7]{52}$/;
+/**
+ * A NodeId: base32 (RFC 4648, lowercase, unpadded) of a 32-byte Ed25519 public key.
+ *
+ * 52 characters carry 260 bits, so the last character has four unused bits that must be
+ * zero: it can only be "a" or "q". Requiring that makes the string a canonical name for
+ * the key; otherwise sixteen different strings would name the same node.
+ */
+export const NODE_ID_PATTERN = /^[a-z2-7]{51}[aq]$/;
 
 /** A message id: 16 random bytes as lowercase hex. */
 export const MESSAGE_ID_PATTERN = /^[0-9a-f]{32}$/;
