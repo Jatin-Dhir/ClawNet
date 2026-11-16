@@ -4,7 +4,7 @@ Branch `claude/overnight-mesh-engine`, 16 November 2026. `main` is untouched.
 
 The short version: this repository held a marketing and community website and no
 networking code. It now also holds a working peer-to-peer engine under [`clawnet/`](clawnet/README.md),
-with a console, that passes 1,182 tests on one machine over loopback. It has never run
+with a console, that passes 1,189 tests on one machine over loopback. It has never run
 between two machines.
 
 ## 1. Original repository condition
@@ -62,12 +62,12 @@ repositories on the account were checked).
 
 ## 4. Files created and modified
 
-152 files changed, about 77,900 lines added, on this branch.
+154 files changed, about 78,500 lines added, on this branch.
 
-- Created under `clawnet/`: engine source 29,700 lines; tests 31,000 lines (38 unit, 10
-  integration, 3 end-to-end test files); console source 3,900 lines; documentation 6,900
+- Created under `clawnet/`: engine source 29,800 lines; tests 31,300 lines (38 unit, 10
+  integration, 3 end-to-end test files); console source 4,000 lines; documentation 6,300
   lines (`README`, `DESIGN`, `ARCHITECTURE`, `PROTOCOL`, `API`, `THREAT_MODEL`,
-  `OPERATIONS`).
+  `OPERATIONS`, `REVIEW`).
 - Created: `.github/workflows/clawnet.yml`, `.gitattributes`, this report.
 - Website files modified, all tooling: `package.json` (a dependency override so the hook
   passes; real test scripts; Node engine), `netlify.toml` (Node 22), `eslint.config.js`
@@ -96,22 +96,35 @@ repositories on the account were checked).
 - A test that passed or failed depending on which of two random records hashed higher.
 - An atomic file replace that could fail with `EPERM` on Windows under load.
 - A race in the refused-peer integration test.
+- Found by the independent code review after the build, each fixed with a test that fails
+  on the old code:
+  - critical: one unsigned cast record with a huge counter froze a node's only thread for
+    days, and any linked peer could send it;
+  - high: a file transfer interrupted while the finished file was being hashed came back
+    stuck after a restart and refused the file for seven days;
+  - a peer that said goodbye and never closed its socket leaked one connection each time;
+  - addresses learned from other peers were dialed without the check that keeps a node
+    from connecting to its own loopback services.
+
+  The seven findings still open are in section 10 and in
+  [`clawnet/docs/REVIEW.md`](clawnet/docs/REVIEW.md).
 
 ## 6. Tests executed and their results
 
 On this machine (Windows 11, Node 26), run by the orchestrator, not just reported by the
 agents that wrote the code:
 
-- `npm test` in `clawnet/`: **1,186 tests, 1,182 pass, 0 fail, 4 skipped**, twice in a row,
+- `npm test` in `clawnet/`: **1,193 tests, 1,189 pass, 0 fail, 4 skipped**, twice in a row,
   about 25 s per run. The skips are POSIX-only permission checks and a symlink check.
 - The Noise implementation passes published test vectors (cacophony and snow) for XX,
   XXpsk3 and X, message by message.
 - `npx eslint clawnet`: 0 errors, 0 warnings.
 
-On GitHub Actions, the last code change (`0f3d27c`) passed everything: lint, the console
-build, and the full suite on Linux, Windows and macOS with Node 22 and 24. It took four
-runs to get there. The first runs on the finished product failed on machines slower than
-this one, in ways the local runs never showed; section 5 lists what they found.
+On GitHub Actions, the last code change (`6b57c4e`, the review fixes) passed everything:
+lint, the console build, and the full suite on Linux, Windows and macOS with Node 22 and
+24. Before the review it took four runs to get the finished product green (`0f3d27c`).
+The first runs failed on machines slower than this one, in ways the local runs never
+showed; section 5 lists what they found.
 
 ## 7. Build and runtime verification
 
@@ -126,10 +139,11 @@ this one, in ways the local runs never showed; section 5 lists what they found.
 
 ## 8. Git commits created
 
-21 code commits, from `9c9d220` (repair the commit hook and build toolchain) to `0f3d27c`
-(the last of three fixes CI prompted), plus the commits that add and update this report. `git log main..claude/overnight-mesh-engine` lists them; each is one logical unit
+22 code commits, from `9c9d220` (repair the commit hook and build toolchain) to `6b57c4e`
+(the fixes from the independent review), plus the commits that add and update this
+report. `git log main..claude/overnight-mesh-engine` lists them; each is one logical unit
 (crypto, wire, routing and sync, storage, transport, discovery, forwarding, node runtime,
-casts and files, API and CLI, console, docs).
+casts and files, API and CLI, console, docs, CI fixes, review fixes).
 
 ## 9. Changes pushed
 
@@ -203,8 +217,10 @@ does. Single-node start-up, configuration and running as a service are in
 
 1. Run it between two real machines on a LAN, then across the internet through a
    publicly reachable node. This is the largest unverified claim.
-2. An independent security review of `core/transport/secure-channel.js`, `core/node.js`
-   and `gate/api-server.js`.
+2. Close the seven review findings still open ([`clawnet/docs/REVIEW.md`](clawnet/docs/REVIEW.md)).
+   Two need a design decision first: the bounded replay cache and the gap between a route
+   and its identity card. Then review `gate/api-server.js`, which was outside the scope of
+   that review.
 3. Obtain or generate an independently verified vector for XXpsk0, or switch private
    networks to a pattern that has one.
 4. Build mailbox custody, so peers that are never online together can exchange messages.
