@@ -169,6 +169,14 @@ ProjectClawNet/
 - [Module Documentation](./docs/) - Detailed module documentation
 - [Security Guidelines](./SECURITY.md) - Security best practices
 
+## ClawNet engine
+
+This repository also contains the ClawNet engine in [`clawnet/`](./clawnet/): a peer-to-peer overlay
+network in Node.js (encrypted links, routing, end-to-end messages, broadcast channels, file
+transfer, a local control API and a console). It is a separate project from the website
+described above and shares nothing with it. See [`clawnet/README.md`](./clawnet/README.md) for what it
+does, what has and has not been verified, and how to run it.
+
 ## 🤝 Contributing
 
 We welcome contributions! Please follow these guidelines:

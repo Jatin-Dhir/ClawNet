@@ -85,6 +85,12 @@ Cache-Control: no-cache
 
 The server never writes the token into any static response.
 
+When the console has not been built (the directory is missing, or has no `index.html`),
+every non-API path answers `404` with a plain-text page (`text/plain`) that says so and
+points at the API; the API itself is unaffected. Only extensions of a fixed table (html,
+js, css, json, svg, png, jpg, gif, webp, ico, fonts, wasm and a few more) are served, and a
+file name with a dot as its first character, a backslash, a colon or a NUL is always 404.
+
 ## 3. Authentication
 
 The token is 32 random bytes written as 64 lowercase hexadecimal characters, created on
@@ -103,9 +109,9 @@ accepted only in this header: never in a query string, a cookie or a body.
 
 **How clients get the token.**
 
-- CLI and scripts on the same machine read `<dataDir>/api-token`. `clawnet token` prints
-  it. `<dataDir>/runtime.json` holds the API's actual address (`api`), which matters when
-  the port is 0.
+- CLI and scripts on the same machine read `<dataDir>/api-token`; the CLI never prints
+  it, except inside the console URL below. `<dataDir>/runtime.json` holds the API's actual
+  address (`api`) and the process id (`pid`), which matters when the port is 0.
 - **ClawView, served by the node**, gets it through the URL fragment. `clawnet ui` prints
   (and with `--open` opens) `http://127.0.0.1:47480/#token=<token>`. On load the console:
   1. reads `location.hash`; if it contains `token=`, stores the value in `sessionStorage`
@@ -152,7 +158,7 @@ Every non-2xx response from `/api/` has this body:
 | 409 | `conflict` | any other operation that is impossible in the current state |
 | 413 | `body_too_large` | body over 65536 bytes |
 | 415 | `unsupported_media_type` | a body without `Content-Type: application/json` |
-| 429 | `rate_limited` | cast publishing rate exceeded |
+| 429 | `rate_limited` | cast publishing rate exceeded, or the server's own limits (below); `details: { retryInMs }` |
 | 500 | `internal` | a bug; the message is generic, the detail is in the node's log |
 | 500 | `storage` | a disk operation failed |
 | 502 | `connect_failed` | `POST /peers/connect`: `details.reason` is a handshake reason (ARCHITECTURE.md 4.1) |
@@ -169,11 +175,18 @@ in the table. `HandshakeError` is `502 connect_failed` with `details.reason`.
 `ConfigError`, `CryptoError`, `CanonicalError` and `WireError` are `400 invalid_request`.
 `StoreError` is `500 storage`. Anything else is `500 internal`.
 
+**The server's own rate limits.** An authenticated client may make 200 requests per second
+(a burst of 400), and failed authentications are limited to 10 per second (a burst of 20).
+Beyond that the answer is `429 rate_limited` with `Retry-After` (whole seconds) and
+`details: { retryInMs }`. The limits are separate, so someone else's wrong tokens never
+lock out the holder of the right one: a request with the right token is not counted
+against the failure budget. Event streams count once, when they open.
+
 ## 5. Conventions
 
 | Type | JSON form |
 | --- | --- |
-| `NodeId` | string of 52 characters `a-z2-7` |
+| `NodeId` | string of 52 characters, the canonical lowercase base32 of a public key: `^[a-z2-7]{51}[aq]$` |
 | `Address` | string `tcp://host:port` |
 | `Ms` | integer: milliseconds, or milliseconds since the Unix epoch for a point in time |
 | `Id` | string of 32 lowercase hex characters (message, packet or transfer id) |
@@ -230,14 +243,18 @@ All paths are relative to `/api/v1`.
 | GET | `/diag/counters` | counters and rates |
 | GET | `/diag/events` | recent events from the ring buffer |
 | GET | `/diag/sync` | ClawSync statistics |
-| GET | `/mailbox` | custody held by this node |
+| GET | `/mailbox` | **not implemented**: always `404 not_found` (section 6.9) |
 | GET | `/config` | effective configuration, secrets redacted |
 | POST | `/shutdown` | stop the node |
 | GET | `/events` | live event stream (section 8) |
 
-The channel, file, mailbox, ping, traceroute and counter endpoints exist only when the
-corresponding service is installed (`cast`, `files`, `relay`, `diag`); otherwise they are
-`404 not_found`. `GET /status` lists the installed services.
+The chat endpoints (`/messages`, `/conversations`) exist only when the `messages` service
+is installed, and the channel, file, ping, traceroute and counter endpoints only when the
+corresponding service is (`cast`, `files`, `diag`); otherwise they are `404 not_found`.
+`GET /status` lists the installed services. The `clawnet` command starts a node with
+`messages`, `diag`, `cast`, `files` and `api` (`defaultServices()` in `src/services.js`).
+There is no `relay` service: it was designed (ARCHITECTURE.md section 8.3) and has not been
+built, so `GET /mailbox` and the custody events of section 8.5 do not exist.
 
 ### 6.1 `GET /status`
 
@@ -272,7 +289,7 @@ corresponding service is installed (`cast`, `files`, `relay`, `diag`); otherwise
   "routing": { "rev": 41, "nodes": 3, "reachable": 2, "lsaSeq": 1794787320113 },
   "messaging": { "outbox": 1, "outboxBytes": 612, "waiting": 0 },
   "events": { "lastSeq": 1042, "oldestSeq": 1 },
-  "services": ["diag", "cast", "files", "relay", "api"],
+  "services": ["messages", "diag", "cast", "files", "api"],
   "asOf": { "boot": "9f2c1a7b", "seq": 1042 }
 }
 ```
@@ -308,7 +325,7 @@ No private key is ever returned by any endpoint.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `id` | NodeId | |
-| `linkId` | integer | increases with every link this node makes |
+| `linkId` | string | a decimal number that increases with every link this node makes; treat it as opaque |
 | `direction` | `"in"` \| `"out"` | who dialed |
 | `addr` | Address | remote socket address |
 | `agent` | string | |
@@ -331,7 +348,7 @@ No private key is ever returned by any endpoint.
 ```json
 {
   "peers": [{
-    "id": "mapw…c4va", "linkId": 3, "direction": "out", "addr": "tcp://192.168.1.31:47470",
+    "id": "mapw…c4va", "linkId": "3", "direction": "out", "addr": "tcp://192.168.1.31:47470",
     "agent": "clawnet/0.1.0", "caps": { "relay": true, "mailbox": true, "transit": true },
     "listen": ["tcp://192.168.1.31:47470"], "since": 1794787205120,
     "rttMs": 1.8, "srttMs": 2.1, "cost": 3, "misses": 0, "lastRxAt": 1794787322900,
@@ -365,7 +382,7 @@ Errors: `invalid_request`, `peer_limit`, `connect_failed` (for example
 { "address": "tcp://192.168.1.31:47470" }
 ```
 ```json
-{ "peer": { "id": "mapw…c4va", "linkId": 3, "direction": "out", "addr": "tcp://192.168.1.31:47470", "cost": 3, "…": "…" } }
+{ "peer": { "id": "mapw…c4va", "linkId": "3", "direction": "out", "addr": "tcp://192.168.1.31:47470", "cost": 3, "…": "…" } }
 ```
 
 **`POST /peers/{id}/disconnect`** closes the link to that node and forgets its manually
@@ -455,9 +472,10 @@ own links but not anyone else's, and a link is `confirmed` only when both ends s
   ], "asOf": { "boot": "9f2c1a7b", "seq": 1042 } }
 ```
 
-**`GET /topology/nodes/{id}`** returns `{ node: TopologyNode, lsa: object | null,
+**`GET /topology/nodes/{id}`** returns `{ node: TopologyNode | null, lsa: object | null,
 peerRecord: object | null, route: Route | null }`; `lsa` and `peerRecord` are the signed
-records as received. Errors: `not_found`.
+records as received. `node` is null for a node of which only a peer record is known (no
+current LSA, not linked). Errors: `invalid_request` (not a NodeId), `not_found`.
 
 ```json
 { "node": { "id": "v5lj…g5iq", "reachable": true, "hops": 2, "…": "…" },
@@ -670,8 +688,11 @@ Response `200`: TraceResult. Errors: `invalid_request`, `busy`.
 ```
 
 A hop with `node: null` did not answer within the timeout (it may not know this node's
-identity card, or it rate-limited the reply). Each `node` is authenticated: the answer is
-sealed by the node that reports itself.
+identity card, or it rate-limited the reply). After three such hops in a row the trace
+stops, so `hops` then ends with three `node: null` entries and `reached` is false: nothing
+beyond a cut will answer, and waiting out every remaining hop helps nobody. Without any
+route to the destination nothing is sent and the three entries come back at once. Each
+`node` is authenticated: the answer is sealed by the node that reports itself.
 
 **`GET /diag/counters`** returns a CountersSnapshot.
 
@@ -716,28 +737,18 @@ meaning, and clients should display members they do not know generically.
               "peers": 2, "pending": 0, "activeRounds": 0, "…": 0 } }
 ```
 
-### 6.9 `GET /mailbox`
+### 6.9 `GET /mailbox` (not implemented)
 
-What this node holds in custody for others.
-
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `enabled` | boolean | `config.caps.mailbox` |
-| `entries`, `bytes` | integer | deposits held |
-| `receipts` | integer | delivery receipts known |
-| `limits` | `{ maxEntries, maxBytesTotal, maxBytesPerDepositor }` | |
-| `deposits` | Deposit[] | at most 500, oldest first |
-
-`Deposit`: `{ id: Id, dst: NodeId, depositor: NodeId, bytes: integer, storedAt: Ms,
-expiresAt: Ms, tries: integer }`. The mailbox holds sealed packets only; there is no
-content to show.
+The endpoint was designed to show what a node holds in custody for others (deposits,
+receipts, quotas). The mailbox service that would serve it is not built, so the node
+answers it like any unknown path:
 
 ```json
-{ "enabled": true, "entries": 1, "bytes": 612, "receipts": 4,
-  "limits": { "maxEntries": 10000, "maxBytesTotal": 268435456, "maxBytesPerDepositor": 16777216 },
-  "deposits": [{ "id": "ae7be26cdaa742ca148068d5ac90eaca", "dst": "v5lj…g5iq", "depositor": "fxl7…elga",
-                 "bytes": 612, "storedAt": 1794787325000, "expiresAt": 1795392123401, "tries": 0 }] }
+{ "error": { "code": "not_found", "message": "no such endpoint" } }
 ```
+
+The `mailbox` section of the configuration (section 6.10) and `caps.mailbox` exist, but
+nothing reads them. A client must not depend on this endpoint.
 
 ### 6.10 `GET /config`
 
@@ -778,7 +789,7 @@ Types used by more than one endpoint or event.
 | `text` | string | |
 | `ts` | Ms | the sender's clock when it was sent |
 | `at` | Ms | this node's clock when it was recorded |
-| `state` | string | outgoing: `queued`, `sent` (transmitted at least once), `custody` (a mailbox holds a copy), `delivered` (acknowledged by the recipient), `expired`. Incoming: `received` |
+| `state` | string | outgoing: `queued`, `sent` (transmitted at least once), `custody` (a mailbox holds a copy; never occurs, as no mailbox service exists), `delivered` (acknowledged by the recipient), `expired`. Incoming: `received` |
 
 An incoming message's `peer` is authenticated: the message was sealed with that node's key.
 
@@ -796,9 +807,9 @@ An incoming message's `peer` is authenticated: the message was sealed with that 
 | `attempts` | integer | transmissions so far |
 | `nextAttemptAt` | Ms \| null | null while waiting for a route |
 | `state` | `"waiting"` \| `"backoff"` | `waiting`: no route to `dst` |
-| `custodian` | NodeId \| null | mailbox asked to hold a copy |
-| `custodyState` | `"pending"` \| `"accepted"` \| `"refused"` \| null | |
-| `custody` | boolean | whether the message may be deposited |
+| `custodian` | NodeId \| null | mailbox asked to hold a copy. Always null: no mailbox service exists |
+| `custodyState` | `"pending"` \| `"accepted"` \| `"refused"` \| null | always null, for the same reason |
+| `custody` | boolean | whether the message may be deposited (true by default, with no effect) |
 
 **`ChannelInfo`**: `{ name: string, chan: Id, encrypted: boolean, joinedAt: Ms,
 messages: integer, lastMessageAt: Ms | null }`.
@@ -875,7 +886,7 @@ data: {"boot":"9f2c1a7b","nodeId":"fxl7tt5ojvwq5qk5m7nd6ekswwt4hjukrlt2qwnkyns2k
 
 id: 9f2c1a7b-1043
 event: link.up
-data: {"seq":1043,"ts":1794787330120,"type":"link.up","data":{"peer":"v5lj76hrnxzwb4die5j65gbjlhis646zpsg4lvyqteji7invg5iq","linkId":4,"direction":"in","addr":"tcp://192.168.1.44:51522","agent":"clawnet/0.1.0","caps":{"relay":true,"mailbox":false,"transit":true},"rttMs":2.2,"cost":3}}
+data: {"seq":1043,"ts":1794787330120,"type":"link.up","data":{"peer":"v5lj76hrnxzwb4die5j65gbjlhis646zpsg4lvyqteji7invg5iq","linkId":"4","direction":"in","addr":"tcp://192.168.1.44:51522","agent":"clawnet/0.1.0","caps":{"relay":true,"mailbox":false,"transit":true},"rttMs":2.2,"cost":3}}
 
 : ka
 
@@ -900,7 +911,11 @@ equivalent; the header wins).
   "to": <oldestSeq - 1> }`, then everything it still has.
 - The boot id differs (the node restarted): `stream.gap` with `{ "reason": "restart" }`,
   then live events from now.
-- No `Last-Event-ID`: live events from now.
+- The id names a `seq` beyond the last event of this boot (it cannot have come from this
+  node): treated as `restart`.
+- No `Last-Event-ID` (or an empty one): live events from now.
+- A malformed id (not `<8 hex>-<integer>`) is `400 invalid_request`, as is a `types`
+  list with an item that is neither an event type nor a prefix ending in `.*`.
 
 After a `stream.gap` the client's picture may be wrong: it refetches the snapshots it
 shows (section 9). A server that must drop a slow client (its queue exceeds 1 MiB) closes
@@ -946,15 +961,17 @@ names the emitting module.
 | Event | Data |
 | --- | --- |
 | `peer.dialing` | `{ addr, peer: NodeId \| null, source, attempt }` |
-| `peer.dial_failed` | `{ addr, peer: NodeId \| null, reason, retryInMs }` |
+| `peer.dial_failed` | `{ addr, peer: NodeId \| null, reason, retryInMs: integer \| null }` (`retryInMs` is null when the address will not be redialled) |
 | `peer.refused` | `{ addr, peer, direction, reason }` |
 | `link.up` | `{ peer, linkId, direction, addr, agent, caps, rttMs, cost }` |
-| `link.down` | `{ peer, linkId, reason, remote: boolean, durationMs }` |
+| `link.down` | `{ peer, linkId, reason, remote: boolean, durationMs }`; `reason` is a BYE reason (ARCHITECTURE.md 4.1), or `auth`, `eof`, `socket`, `overflow` or `unknown` |
 | `link.metric` | `{ peer, rttMs: number \| null, srttMs, cost, misses }` once per keepalive per link |
 | `link.throttled` | `{ peer, by: "packets" \| "bytes" }` |
 | `discovery.candidate` | `{ addr, peer: NodeId \| null, source }` |
 | `discovery.error` | `{ source, message }` |
 | `peer.record` | `{ peer, seq, addrs: Address[], caps }` |
+| `peer.equivocation` | `{ peer, seq }` two different valid peer records of one origin with one `seq` |
+| `discovery.clone_suspected` | `{ peer, seq, bumps }` another node appears to use this node's identity; `peer` is this node |
 
 **Routing**
 
@@ -963,6 +980,7 @@ names the emitting module.
 | `lsa.originated` | `{ seq, links: integer, reason }` |
 | `lsa.accepted` | `{ origin, seq, changed: boolean, from: NodeId \| null }` |
 | `lsa.expired` | `{ origin }` |
+| `lsa.equivocation` | `{ origin, seq }` two different valid LSAs of one origin with one `seq` |
 | `routes.changed` | `{ rev, total, reachable: NodeId[], unreachable: NodeId[], changed: integer }` |
 | `topology.changed` | `{ rev, full: boolean, nodesAdded: [{ id, caps }], nodesUpdated: [{ id, caps }], nodesRemoved: NodeId[], linksAdded: TopologyLink[], linksUpdated: TopologyLink[], linksRemoved: [{ a, b }] }` |
 
@@ -974,7 +992,7 @@ names the emitting module.
 | `packet.forwarded` | `{ id, type, dst, from, nextHop, ttl, bytes }` this node passed on someone else's packet |
 | `packet.delivered` | `{ id, type, from, bytes }` a packet addressed to this node arrived from neighbour `from` |
 | `packet.queued` | `{ id, type, dst, from, reason, queued: integer }` held in the transit queue: `no-route`, `split-horizon`, `backpressure` |
-| `packet.dropped` | `{ id, type, dst, from: NodeId \| null, reason }`: `ttl`, `duplicate`, `no-transit`, `transit-full`, `hold-expired`, `malformed`, `no-handler`, `auth`, `busy` |
+| `packet.dropped` | `{ id, type, dst, from: NodeId \| null, reason }`: `ttl`, `duplicate`, `no-transit`, `transit-full`, `hold-expired`, `malformed`, `no-handler`, `oversize`, `auth` |
 
 **Messages**
 
@@ -992,7 +1010,7 @@ names the emitting module.
 | `chat.message` | `{ message: ChatMessage }` |
 | `chat.state` | `{ id, peer, state }` |
 
-**Channels, files, custody, diagnostics, API**
+**Channels, files, diagnostics, API**
 
 | Event | Data |
 | --- | --- |
@@ -1004,16 +1022,14 @@ names the emitting module.
 | `file.progress` | `{ id, direction, bytesDone, size, chunksDone, chunks, rateBps }` at most 4 per second per transfer; `id` is the transfer id |
 | `file.paused` | `{ id, reason }` |
 | `file.resumed` | `{ id }` |
-| `custody.deposited` | `{ id, dst, custodian }` |
-| `custody.refused` | `{ id, dst, custodian, reason }` |
-| `custody.stored` | `{ id, dst, depositor, bytes }` |
-| `custody.forwarded` | `{ id, dst, try }` |
-| `custody.purged` | `{ id, dst, reason }` |
-| `custody.receipt` | `{ id, custodian }` |
 | `diag.ping` | `{ dst, seq, id, rttMs: number \| null, hops: integer \| null }` |
 | `diag.trace_hop` | `{ dst, n, node: NodeId \| null, rttMs: number \| null, reached: boolean }` |
 | `api.listening` | `{ host, port }` |
-| `api.denied` | `{ reason, remote }` |
+| `api.denied` | `{ reason: "host" \| "origin" \| "token", remote }` (at most one per second) |
+
+The custody events (`custody.deposited`, `custody.refused`, `custody.stored`,
+`custody.forwarded`, `custody.purged`, `custody.receipt`) belong to the unbuilt mailbox
+service. They are never emitted, and the console does not use them.
 
 ## 9. Building a live view without polling
 
@@ -1032,10 +1048,9 @@ events newer than the snapshot.
 | Route overlay | `GET /topology/routes` | `routes.changed` says which destinations appeared or vanished and how many changed; refetch the routes when `changed > 0` or either list is non-empty (the table is small) |
 | Peers | `GET /peers` | `link.up`, `link.down`, `link.metric`, `link.throttled`, `peer.dialing`, `peer.dial_failed` |
 | Chat | `GET /conversations`, `GET /conversations/{id}` | `chat.message`, `chat.state` |
-| Outbox | `GET /outbox` | `message.queued`, `message.sent`, `message.waiting`, `message.acked`, `message.expired`, `custody.deposited`, `custody.refused` |
+| Outbox | `GET /outbox` | `message.queued`, `message.sent`, `message.waiting`, `message.acked`, `message.expired`, `message.cancelled` |
 | Channels | `GET /channels`, history | `cast.joined`, `cast.left`, `cast.message` |
 | Files | `GET /files` | `file.*` |
-| Mailbox | `GET /mailbox` | `custody.stored`, `custody.forwarded`, `custody.purged` |
 
 **Animating packet activity.** Each packet event names the two ends of the hop it
 concerns, so it maps onto an edge of the graph:

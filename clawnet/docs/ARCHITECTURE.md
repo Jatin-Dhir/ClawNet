@@ -16,6 +16,33 @@ Contents: 1 conventions · 2 layers · 3 data directory · 4 protocol details fi
 9 event catalogue · 10 test helpers · 11 end-to-end flows · 12 bounds summary ·
 13 decisions.
 
+## Status: what is built, and where this document is behind the code
+
+This document began as the contract the engineers built against. It has since been
+reconciled with the code. **Where the two disagree, the code is right and this document has
+a bug.** Each section that was written ahead of the code now starts with an "As built" note
+that lists the differences. Wire-level facts are in `PROTOCOL.md`; this document keeps module
+structure, bounds, events and flows.
+
+| Part | State |
+| --- | --- |
+| `core/crypto`, `wire`, `transport`, `peer`, `discovery`, `routing`, `messaging`, `storage`, `node.js`, `sync/`, `vault/store.js`, `vault/keystore.js` | built and tested |
+| `Router` | built, but in `core/node.js`, not in `routing/forwarder.js`; it has no unit test file of its own (`routing.test.js`, `partition.test.js` and `api.test.js` exercise it through real nodes) |
+| `ConversationStore` | built, in `core/messaging/conversations.js`; `node.js` mounts it (the `msg` kind is reserved), and a `messages` service exposes its routes |
+| ClawCast (`cast/channels.js`) | built; see the as-built note in 8.1 |
+| File transfer (`vault/file-transfer.js`) | built; see the as-built note in 8.2 |
+| Diagnostics (`core/diag/`) | built |
+| Control API and console server (`gate/api-server.js`), `ui/` | built; the console source is in `console/` |
+| CLI (`src/cli/`, `bin/clawnet.js`) | built, with fewer commands than 8.6 first listed |
+| Default services | `defaultServices()` in `src/services.js`: `messages`, `diag`, `cast`, `files`, `api`. There is no `src/cli/standard.js` and no `standardServices()` |
+| **Mailbox custody** (`gate/relay.js`, 8.3, flow 11.4) | **designed, not built.** No `relay` service, no `custody-deposit` or `custody-result` kinds, no producer of `receipt` records, no `custody.*` events, no `GET /mailbox`. What exists: the `cust` header field, the `receipt` record schema and dataset name, `caps.mailbox`, the `mailbox` configuration section, and the messenger's `setCustodian` hook. None of these does anything useful on its own. |
+
+Test files this document once promised that do not exist: `test/helpers/fake-context.js`,
+`test/unit/relay.test.js`, `test/integration/custody.test.js`,
+`test/unit/routing-router.test.js`, `test/integration/hostile.test.js`,
+`test/integration/wire-privacy.test.js` and `test/integration/restart.test.js`. Section 10.3 lists
+the files that do exist.
+
 ## 1. Conventions
 
 **Words.** MUST, MUST NOT and MAY are used in the RFC 2119 sense. Signatures are written
@@ -26,7 +53,7 @@ null, `name?` means the property may be absent.
 
 | Type | Meaning |
 | --- | --- |
-| `NodeId` | 52-character string, `NODE_ID_PATTERN` |
+| `NodeId` | 52-character string, `NODE_ID_PATTERN` (`^[a-z2-7]{51}[aq]$`: the last character is `a` or `q`, DESIGN.md 15.1) |
 | `Address` | `"tcp://host:port"` as accepted by `validateAddress` |
 | `Ms` | integer milliseconds; a point in time is milliseconds since the Unix epoch |
 | `Packet` | `{ type: number, header: object, body?: Buffer }`, exactly what `encodePacket` takes and `decodePacket` returns |
@@ -79,9 +106,8 @@ A module MUST work when `log` is omitted.
 **Files this document adds.** A few files are introduced here that a wave brief may not
 name: `core/discovery/pex.js`, `core/storage.js`, `src/index.js`, `core/diag/diag.js`,
 `core/diag/counters.js`, the `src/cli/*` files and `bin/clawnet.js`. Each belongs to the
-owner of the module it is listed under. `Router` deliberately lives in
-`core/routing/forwarder.js` and `ConversationStore` in `core/messaging/reliable.js` so
-that no cross-engineer import path depends on an unnamed file.
+owner of the module it is listed under. As built, `Router` lives in `core/node.js` and
+`ConversationStore` in `core/messaging/conversations.js` (see the status section).
 
 ## 2. Layers
 
@@ -97,7 +123,7 @@ imports from `src/cast`, `src/gate` or `src/cli`.
 | 3 | `core/peer/address-book.js`, `core/peer/peer-manager.js` | timers (peer-manager) | layers 0-2 |
 | 4 | `core/discovery/*`, `core/routing/forwarder.js`, `core/messaging/reliable.js`, `core/storage.js` | UDP and timers in `multicast.js`; files in `storage.js`; none in the others | layers 0-1 only. They reach peers and each other through injected functions, never by import. `storage.js` imports `vault/store.js` and `vault/keystore.js` |
 | 5 | `core/node.js`, `src/index.js` | timers | layers 0-4 |
-| 6 | `cast/channels.js`, `vault/file-transfer.js`, `gate/relay.js`, `core/diag/*` | files in `file-transfer.js`; no sockets, no timers | layers 0-1 only. Everything else arrives through the `ServiceContext` (section 6). Services never import `core/node.js`, layers 2-4, or one another |
+| 6 | `cast/channels.js`, `vault/file-transfer.js`, `gate/relay.js` (not built), `core/diag/*`, `core/messaging/conversations.js` (the `messages` service) | files in `file-transfer.js`; no sockets, no timers | layers 0-1 only. Everything else arrives through the `ServiceContext` (section 6). Services never import `core/node.js`, layers 2-4, or one another |
 | 6 | `gate/api-server.js` | HTTP socket, timers, static files | layers 0-1; the node arrives as `ctx.node` |
 | 7 | `src/cli/*`, `bin/clawnet.js` | process, stdio, child processes | everything |
 
@@ -119,22 +145,27 @@ persists lives here.
 ```
 <dataDir>/
   lock                  pid of the owning process; exclusive create; see 7.1
-  runtime.json          { pid, boot, nodeId, listen, api, startedAt }; removed on clean stop
-  config.json           optional; read by loadConfig
+  runtime.json          { pid, boot, nodeId, listen, api, startedAt }; removed on clean stop;
+                        `api` is the full URL, e.g. "http://127.0.0.1:47480"
+  network-id            the network this identity belongs to (DESIGN.md 15.3)
+  config.json           optional; read by loadConfig; `init` writes { networkId }
   keystore.json         Keystore; secret = signSeed || linkPrivate || e2ePrivate (96 bytes)
   api-token             64 lowercase hex characters and "\n", mode 0600 (gate/api-server.js)
   state.json            plain  JsonFile  { lsaSeq, peerSeq }
+  lsdb-seqs.json        plain  JsonFile  highest LSA sequence seen per origin
   peers.json            plain  JsonFile  address book
   peer-records.json     plain  JsonFile  signed peer records (the card directory)
-  seen.log              plain  AppendLog { id, at } for every delivered message id
+  seen.log              sealed log       delivered (sender, id) pairs
   outbox.log            sealed log       outbox index
   outbox/<id>           sealed blobs     one encoded DATA packet per outbox entry
   conversations.log     sealed log       chat messages and their state changes
   services/<name>/...   storage of service <name>, through ctx.storage
+                          cast: channels.json, history.log
+                          files: transfers.json, bitmaps/, hashes/
   downloads/            default files.downloadsDir
 ```
 
-"Plain" files hold only public or non-sensitive data. "Sealed" files are encrypted with
+"Plain" files hold data that is public or not secret: peer addresses and the like. (`config.json` holds the network key if the operator put it there, and `api-token` is a secret protected by file permissions only.) "Sealed" files are encrypted with
 the keystore's `storageKey` (section 5.8). The keystore is never recreated automatically
 once it exists: a keystore that fails to open aborts `start()`.
 
@@ -150,8 +181,8 @@ protocol violation.
 
 | Type | Header | Meaning |
 | --- | --- | --- |
-| `PING` | `{ "n": integer 0..2^53-1 }` | keepalive request. `n` = 0 is the admission confirmation (5.2) and is never answered. `n` >= 1 increases by one per ping on a link |
-| `PONG` | `{ "n": integer 1..2^53-1 }` | answer to the `PING` with the same `n`, sent immediately |
+| `PING` | `{ "n": 16 lowercase hex characters }` | keepalive request. `n` is a fresh random 8-byte nonce. The admission confirmation (5.2) is a `PING` with a nonce too |
+| `PONG` | `{ "n": 16 lowercase hex characters }` | answer to the `PING` with the same nonce, sent immediately. The nonce stops a peer from answering a ping it has not seen, so round-trip time cannot be faked low (DESIGN.md 15.6) |
 | `BYE` | `{ "reason": string matching ^[a-z-]{1,32}$ }` | the sender is closing the link |
 
 `BYE` reasons, also used as `HandshakeError.reason` and in `link.down`:
@@ -168,7 +199,8 @@ protocol version, or tampering; the four are indistinguishable by design), `bad-
 `bad-card`, `clock-skew`, `refused` (the responder closed with an unknown reason).
 
 Reasons a link can end with besides a `BYE` reason: `auth` (a record failed
-authentication), `eof` (TCP closed without `BYE`), `socket` (I/O error).
+authentication), `eof` (TCP closed without `BYE`), `socket` (I/O error), `overflow` (the
+peer stopped reading and the control queue filled) and `unknown`.
 
 ### 4.2 Routed packets
 
@@ -186,11 +218,11 @@ the 512 seconds the counter needs at minimum to wrap.
 `cust`. Present only on a `DATA` packet that a mailbox is delivering out of custody; it
 names that mailbox. Forwarders treat it as opaque. See 8.3.
 
-Forward duplicate key. A forwarder's seen-cache key is
-`"d:" + id + ":" + try + ":" + (cust ?? "")` for `DATA` and `"p:" + id` for `PROBE`.
-Including `cust` lets a mailbox retransmit with its own `try` counter without colliding
-with the originator's. The cache holds `config.limits.seenCacheEntries` entries for
-`2 * config.timers.transitHoldMs`.
+Forward duplicate key (DESIGN.md 15.11, as built). A forwarder suppresses a routed packet whose
+`SHA-256(tag || dst || id || try || cust || body)` it has forwarded in the last
+`config.timers.forwardDedupeTtlMs` (60 s); `tag` is `d` for `DATA` and `p` for `PROBE`. The
+body is in the key so that one packet cannot cancel a later retransmission and a junk
+body cannot burn an id. The cache holds `config.limits.seenCacheEntries` entries.
 
 `DATA` body scheme. Byte 0 selects the local handler at the destination: `0x01` goes to
 `ReliableMessenger`, `0x02` to the handler registered as `data.transfer`. A forwarder
@@ -204,9 +236,9 @@ never looks at the body. An empty body or an unknown scheme is dropped at the de
 | Key | Set by | Meaning |
 | --- | --- | --- |
 | `kind` | sender | string matching `^[a-z0-9-]{1,32}$`; selects the handler |
-| `card`, `ts` | `sealMessage` | sender's identity card and send time |
+| `card`, `ts`, `hs` | `sealMessage` | sender's identity card, send time and the sender's identity-key signature over the handshake hash and the content (DESIGN.md 15.9) |
 | `ack` | `ReliableMessenger` | `true` when the sender wants a sealed `ack`; absent otherwise |
-| `re` | sender | in `ack`, `probe-reply` and `custody-result`: the 32-hex id being answered |
+| `re` | sender | in `probe-reply`: the 32-hex probe id being answered. (An `ack` names the message in its `id` field, and `custody-result` was never built.) |
 
 All other keys belong to the kind. `meta` is at most 8192 bytes encoded
 (`MAX_META_BYTES`), `content` at most 983040 bytes (`MAX_SEALED_CONTENT`, 960 KiB), which
@@ -216,17 +248,20 @@ Kinds registry (the complete v1 set; a kind is handled by exactly one module):
 
 | Kind | Reliable | Owner | `meta` fields besides the reserved ones | `content` |
 | --- | --- | --- | --- | --- |
-| `ack` | no | `core/messaging/reliable.js` | `re` | empty |
+| `ack` | no | `core/messaging/reliable.js` | `id`: the acknowledged message id | empty |
 | `msg` | yes | `core/messaging/reliable.js` (`ConversationStore`) | none | UTF-8 text, 1..16384 bytes |
-| `custody-deposit` | yes | `gate/relay.js` | `ref`: id of the inner packet, `dst`: NodeId, `exp`: Ms | the encoded inner `DATA` packet |
-| `custody-result` | yes | `gate/relay.js` | `re`: inner id, `ok`: boolean, `reason?`: string | empty |
+| `custody-deposit` | yes | `gate/relay.js` **(not built)** | `ref`: id of the inner packet, `dst`: NodeId, `exp`: Ms | the encoded inner `DATA` packet |
+| `custody-result` | yes | `gate/relay.js` **(not built)** | `re`: inner id, `ok`: boolean, `reason?`: string | empty |
 | `file-offer` | yes | `vault/file-transfer.js` | `tid`, `name`, `size`, `sha256`, `chunk`, `key` | empty |
-| `file-accept` | yes | same | `tid`, `base`, `ranges` | empty |
+| `file-accept` | yes | same | `tid`, `base`, `ranges`, `win` | empty |
 | `file-reject` | yes | same | `tid`, `reason` | empty |
-| `file-sack` | no | same | `tid`, `base`, `ranges` | empty |
+| `file-sack` | no | same | `tid`, `base`, `ranges`, `win` | empty |
 | `file-done` | yes | same | `tid`, `ok`: boolean, `reason?` | empty |
 | `file-cancel` | yes | same | `tid`, `reason` | empty |
 | `probe-reply` | no | `core/diag/diag.js` | `re`: probe id, `n`, `hop`, `at`: `"dst"` or `"expired"` | empty |
+
+The `msg` and `ack` kinds are reserved: the node and the messenger own them, and no service may
+register them.
 
 A handler MUST validate every `meta` field it reads (type, range, length) and ignore the
 message on any violation. A handler MUST be idempotent per message `id` (7.3).
@@ -257,10 +292,10 @@ floods through every node. Names are wire-visible and fixed.
 
 | Name | Class | Owner | Key or stream | Version or index | Bound |
 | --- | --- | --- | --- | --- | --- |
-| `lsa` | `LwwDataset` | `core/routing/forwarder.js` (`Router`) | `origin` | `seq` | 10000 entries |
+| `lsa` | `LwwDataset` | `core/node.js` (`Router`) | `origin` | `seq` | 10000 entries |
 | `peer` | `LwwDataset` | `core/discovery/pex.js` | `origin` | `seq` | 10000 entries |
 | `cast` | `LogDataset` | `cast/channels.js` | `chan + ":" + origin` | `n` | 64 per stream, 1024 streams |
-| `receipt` | `LwwDataset` | `gate/relay.js` | `origin + ":" + id` | `ts` | 20000 entries |
+| `receipt` | `LwwDataset` | `gate/relay.js` (not built: every node keeps a relay-only instance and nothing publishes into it) | `origin + ":" + id` | `ts` | 20000 entries |
 
 Each owner pins its own records (`pin(key)`), so eviction never removes what this node
 originates. The eviction and retention rules themselves are those of `sync/datasets.js`:
@@ -359,7 +394,12 @@ signal; `close()` while a dial is pending; `normalizeIp` cases.
 
 ### 5.2 `core/transport/secure-channel.js`
 
-**Responsibility.** Runs the Noise XX / XXpsk3 link handshake over a connected stream,
+> **As built.** Private networks use `Noise_XXpsk0` (DESIGN.md 15.4), not `XXpsk3`. `PING` and
+> `PONG` carry a 16-hex nonce (4.1). `send` takes a priority class (`control`, `ack`, `data`);
+> a control queue that overflows closes the link with reason `overflow`; `onPacket` is called
+> as `onPacket(packet, size)`. `PROTOCOL.md` section 3 is the wire-level description.
+
+**Responsibility.** Runs the Noise XX / XXpsk0 link handshake over a connected stream,
 verifies the remote identity, and then provides an authenticated, encrypted, ordered
 packet stream with rekeying and backpressure. It is the only module that turns socket
 bytes into packets.
@@ -379,7 +419,7 @@ export async function establishChannel({
   initiator,           // boolean
   identity,            // Identity
   networkId,           // string
-  networkKey,          // Buffer(32) | null  -> XXpsk3 when set
+  networkKey,          // Buffer(32) | null  -> XXpsk0 when set
   buildLocal,          // (observed: string | null) => { agent, caps, listen: Address[] }
   authorize,           // ({ id, card, payload, initiator }) => string | null
   now, handshakeTimeoutMs, maxClockSkewMs,
@@ -483,7 +523,7 @@ receive memory one record plus one frame (1 MiB) plus one chunk.
 
 **Tests.** Over real loopback TCP and over an in-memory duplex pair that can delay, split,
 reorder and corrupt bytes:
-- XX and XXpsk3 handshakes complete; both sides agree on `handshakeHash`, see each other's
+- XX and XXpsk0 handshakes complete; both sides agree on `handshakeHash`, see each other's
   NodeId and payload.
 - Each verification step fails with its reason: wrong network id and wrong or missing
   network key (`noise`), a card signed by another identity (`bad-card`), a valid card of a
@@ -570,6 +610,13 @@ moving an address from one id to another; eviction never removes static entries;
 fields, bad addresses, wrong types) is dropped without throwing.
 
 ### 5.4 `core/peer/peer-manager.js`
+
+> **As built.** The duplicate-link rule is DESIGN.md 15.5 (compare the 32-byte identity keys
+> as unsigned bytes, only for links initiated from opposite sides within one handshake timeout;
+> otherwise the newer link replaces the older). Control and routed packets have separate
+> budgets (15.8): control traffic over budget pauses reading, routed packets over budget are
+> dropped and counted, and neither disconnects. Dials are budgeted by IP address (15.22).
+> The penalty for a peer that broke the protocol lasts `timers.redialMaxMs`.
 
 **Responsibility.** Owns every link: dials and accepts, applies admission policy and
 duplicate-link resolution, runs keepalive and RTT measurement, enforces per-peer rate
@@ -723,6 +770,10 @@ deadline), `redialMinMs`, `redialMaxMs`, `redialJitter`.
 
 ### 5.5 `core/discovery/`
 
+> **As built.** The module emits two events that the catalogue in section 9 did not list:
+> `discovery.clone_suspected { peer, seq, bumps }` and `peer.equivocation { peer, seq }`.
+> Beacons are in `PROTOCOL.md` section 11. `DEFAULT_SYNC_LIMITS` is 64 KiB per packet.
+
 **Responsibility.** Finds addresses to dial by three independent means and feeds them to
 the address book; it also holds the card directory. It never creates a link itself: every
 discovered address ends in the peer manager's authenticated handshake.
@@ -824,6 +875,15 @@ manager's maintenance pass dials them whenever the node is below target. The nod
   `seq` makes the next one higher still; records survive a reload and are re-verified.
 
 ### 5.6 `core/routing/forwarder.js`
+
+> **As built.** `Router` is not in `forwarder.js`: it is in `core/node.js` (exported from
+> `src/index.js`), and `routing-router.test.js` does not exist. `Forwarder` is as described,
+> with the duplicate key of 4.2, and `packet.dropped` reasons `ttl`, `duplicate`, `no-transit`,
+> `transit-full`, `hold-expired`, `malformed`, `no-handler` and `oversize` (a routed packet
+> over the 128 KiB send limit is dropped, never forwarded). The messenger adds `auth`.
+> `lsa.equivocation { origin, seq }` is emitted by the node. The rules of DESIGN.md 15.14 to
+> 15.19 (total order, freshness by `seq`, self-origination, issue rate, cost as the larger of
+> two advertisements, per-origin caps) are implemented; `PROTOCOL.md` section 6.3 states them.
 
 Two classes: `Router` is the control plane (LSDB, our LSA, shortest paths), `Forwarder`
 the data plane (per-packet decisions and the transit queue).
@@ -1003,6 +1063,14 @@ identities.
   `(id, try)` with a different `cust` forwarded again, and the event rate cap.
 
 ### 5.7 `core/messaging/reliable.js`
+
+> **As built.** `ConversationStore` is in `core/messaging/conversations.js`, not in this file,
+> and the node mounts it, because `msg` is a reserved kind. An `ack` names the acknowledged
+> message in `meta.id`. The seen-cache is keyed by (authenticated sender, id) and the
+> persisted log is sealed (DESIGN.md 15.10). Attempts triggered by a route appearing wait for
+> the backoff floor plus up to 2 s of jitter (15.12). The messenger has custody hooks
+> (`setCustodian`, the `custodian` and `custodyState` outbox fields, `header.cust` handling)
+> that nothing uses, because the mailbox service does not exist.
 
 **Responsibility.** `ReliableMessenger` seals outgoing messages, keeps them in a durable
 outbox and retransmits until acknowledged or expired; for incoming sealed messages it
@@ -1291,7 +1359,7 @@ constants of `core/wire/types.js`. It does not import any service module.
 | `PeerManager.preferPeer` | `(id) => router.caps(id)?.relay === true \|\| pex.recordOf(id)?.caps.relay === true` | |
 
 `SyncEngine` options: `self: nodeId`, `limits: DEFAULT_SYNC_LIMITS` (256 records,
-256 KiB, 4096 pending per peer), `gossipBatchMs: timers.gossipBatchMs`, `schedule` from
+64 KiB, 4096 pending per peer), `gossipBatchMs: timers.gossipBatchMs`, `schedule` from
 the `TimerSet`, `minRoundIntervalMs: min(1000, floor(timers.syncIntervalMs / 2))`,
 `roundTimeoutMs: min(10000, max(1000, 4 * timers.syncIntervalMs))`; `tick()` every
 `timers.syncIntervalMs`.
@@ -1326,16 +1394,20 @@ Each service module exports one factory and nothing the node needs to know about
 
 | Module | Factory | Service name |
 | --- | --- | --- |
+| `core/messaging/conversations.js` | `createMessagesService()` | `messages` (only the routes `POST /messages`, `GET /conversations`, `GET /conversations/:id`; the store itself is built by `node.js`) |
 | `core/diag/diag.js` | `createDiagService(options?)` | `diag` |
 | `cast/channels.js` | `createCastService(options?)` | `cast` |
 | `vault/file-transfer.js` | `createFileTransferService(options?)` | `files` |
-| `gate/relay.js` | `createRelayService(options?)` | `relay` |
+| `gate/relay.js` | `createRelayService(options?)` | `relay` **(not built)** |
 | `gate/api-server.js` | `createApiService(options?)` | `api` |
 
-`src/cli/standard.js` exports `standardServices(): Service[]`, the five in the order of
-the table; the CLI, the devnet launcher and the test cluster use it. Because all four
-datasets must exist on every node (4.5), a node meant to join a real network always
-includes `cast` and `relay`.
+`src/services.js` exports `defaultServices({ uiDir }?): Service[]`, a fresh list of `messages`,
+`diag`, `cast`, `files` and `api`, in that order (services start in order and stop in reverse,
+so the API opens its port last and closes first). The CLI and the devnet launcher use it; a
+test cluster chooses its own list. A node meant to join a real network includes `cast`, which
+registers the cast dataset; without it the node keeps a relay-only dataset that does not
+surface casts. New services are added at the `ADD NEW SERVICES HERE` marker in that file;
+their routes need no change in the API server.
 
 **Phases.** `init` runs before any socket is open and before the `SyncEngine` exists. It
 is the only place where handlers, datasets and API routes may be registered; registering
@@ -1435,6 +1507,11 @@ taken are undone in reverse, the state becomes `failed` and the error is rethrow
 Nothing is sent to any peer before step 8, and no link can come up before every handler
 is registered.
 
+> **As built.** Step 1 also calls `checkNetworkId` and writes `network-id` if it is missing; a
+> data directory that belongs to another network aborts the start (DESIGN.md 15.3). Step 3
+> also loads `lsdb-seqs.json`. `ConversationStore` is constructed in step 4 by `node.js`.
+> `runtime.json` is written after the services have started, and removed with `lock` on stop.
+
 ### 7.2 Stop
 
 `stop()` is idempotent; concurrent calls share one promise. Each step is attempted even if
@@ -1470,7 +1547,7 @@ be lost, and why that is acceptable.
 | Conversations | append (`batch`) | the last messages may be missing; an incoming one is then redelivered by retransmission because its ack was not sent or its id not recorded |
 | Address book, peer records | coalesced saves | rediscovered |
 | Cast counters `n` | `flush()` before the record is published | never reused. If the file is lost entirely, the counter resumes above the highest `n` of ours that the network returns |
-| Mailbox deposits | blob then index append, before `custody-result` is sent | a deposit is either acknowledged and stored, or not acknowledged and deposited again |
+| Mailbox deposits (not built) | blob then index append, before `custody-result` is sent | a deposit is either acknowledged and stored, or not acknowledged and deposited again |
 | File transfer progress | `.part` data fsynced, then the bitmap saved | the bitmap may be behind the data (chunks are fetched again), never ahead of it |
 | A file that could not be parsed or opened | moved aside as `<name>.corrupt-<timestamp>` | the node starts from defaults and emits `store.recovered`; nothing is deleted |
 
@@ -1479,12 +1556,26 @@ crash it is exactly-once.
 
 ## 8. Wave 3 modules
 
-Unit tests of a service use a fake `ServiceContext` (`test/helpers/fake-context.js`, owned
-by whoever writes the first wave 3 test, kept to the shape of section 6: in-memory
+Unit tests of a service use a fake `ServiceContext`. (As built, `test/helpers/fake-context.js` was never
+written: each unit test file carries its own small fake context. The cast tests use the real
+`SimNet` of `test/helpers/simnet.js`, and the file tests a fake network with a manual clock and
+real files.) The shape follows section 6: in-memory
 `messaging` that delivers between contexts with optional loss, a fake `schedule`, a real
 `NodeStorage` in a temp dir). Integration tests use the cluster helper (10.2).
 
 ### 8.1 `cast/channels.js` (ClawCast)
+
+> **As built.** The rate limit is DESIGN.md 15.25, not a token bucket: a record `n` is admitted
+> only if `ts(n) - ts(n - jK)` is at least `j` minutes for every held record, `n + jK`
+> likewise, and `n` is not more than `K` past the newest held index, with `K =
+> limits.castPerOriginPerMin` capped at `maxPerStream - 1` (63). The rule holds per residue
+> class of the counter modulo `K`, because a single-predecessor rule can be bypassed by
+> delivering a stream in reverse. A record whose neighbours are not held cannot be judged and
+> is admitted. Gap and rate refusals are both soft and counted as `rateRejected`; `cast.rejected`
+> is emitted at most once a second. Cast encryption is bound to the record (15.24): the
+> associated data and the HKDF `info` carry the canonical `{ type, origin, chan, n, ts, enc,
+> salt }`. The associated data in decision 22 below is superseded by this. The wire details are
+> in `PROTOCOL.md` section 12.
 
 **Responsibility.** Publishes and receives broadcast messages on named channels, with
 optional shared-key encryption, on top of the `cast` log dataset that every node relays.
@@ -1593,6 +1684,23 @@ Integration: a three-node line; a keyed cast from one end is read at the other; 
 middle node, not joined, never surfaces it; the netem capture contains no plaintext.
 
 ### 8.2 `vault/file-transfer.js`
+
+> **As built.** `file-accept` and `file-sack` carry an extra integer `win`, the receiver's credit
+> window (DESIGN.md 15.26): it starts at 4, grows by one per acknowledgement that advances the
+> base, is halved on loss or stall and never exceeds `files.window`. Acknowledgements go out
+> every `min(8, ceil(win / 2))` new chunks. The sender records a 16-byte truncated SHA-256 of
+> every chunk (sealed on disk) and re-reads and compares each chunk before sealing it; this
+> replaces the size-and-mtime check below. A source deleted or replaced by rename while the
+> sender holds it open is not detected (the open handle keeps reading the old data); growth,
+> shrinkage and in-place changes are. A chunk counts as held in an acknowledgement as soon as it
+> has arrived and authenticated, before its disk write finishes; a failed write fails the
+> transfer. The receiver rejects an offer whose `chunk` exceeds 114688 (the plaintext that fits
+> a routed packet) with `file-reject` reason `invalid`, not the 1,032,192 named below, and limits
+> its replies to unusable offers to 20 per peer per minute. A cancel from the peer with a reason
+> other than `user` ends the receiving side `failed`. A taken name is made unique by putting a
+> number before the last extension (`same.tar (1).gz`). `file.incoming` is emitted in `auto` mode
+> too. Free disk space is not checked beyond `files.maxSizeBytes`. `PROTOCOL.md` section 13 has
+> the wire details.
 
 **Responsibility.** Sends a file to one node and receives files from others: offer,
 acceptance policy, encrypted chunks with selective acknowledgement and retransmission,
@@ -1747,6 +1855,12 @@ mid-transfer; the capture at the middle link contains none of the file's bytes.
 
 ### 8.3 `gate/relay.js` (mailbox custody)
 
+> **DESIGNED, NOT BUILT.** There is no `src/gate/relay.js`, no `relay` service, no
+> `custody-deposit` or `custody-result` message and no producer of `receipt` records. Everything
+> in this section, in flow 11.4 and in the custody events of section 9 describes intent. A node
+> may still set `caps.mailbox`, which advertises a service it does not provide. Messages to an
+> offline node wait in the sender's outbox instead (`THREAT_MODEL.md` section 5).
+
 **Responsibility.** Lets a sender deposit sealed packets for an unreachable destination
 with a mailbox node, and lets a mailbox node store them, forward them when the
 destination appears, and purge them on the destination's signed receipt. It also owns the
@@ -1865,7 +1979,7 @@ turns module statistics into totals and rates. It answers other nodes' probes wi
 strict rate limit.
 
 **Files.** `src/core/diag/diag.js`, `src/core/diag/counters.js`,
-`test/unit/diag.test.js`, `test/unit/diag-counters.test.js`, `test/integration/diag.test.js`.
+`test/unit/diag-service.test.js`, `test/unit/diag-counters.test.js`, `test/integration/diag.test.js`.
 **Imports.** `core/crypto/primitives.js` (`randomBytes`), `core/wire/types.js`,
 `core/wire/schema.js`, `core/errors.js`.
 
@@ -1923,12 +2037,21 @@ the last link, ping reports loss and traceroute stops at the last reachable hop;
 
 ### 8.5 `gate/api-server.js`
 
+> **As built.** The `Host` rule of API.md 2.1 is implemented as written: a `Host` without the
+> port is refused unless the server listens on port 80 (this section's test list says "with and
+> without the port"; API.md wins). The server also rate-limits clients (200 authenticated
+> requests per second with a burst of 400, 10 failed authentications per second with a burst of
+> 20; API.md section 4). It registers the routes that need only the node itself (status,
+> identity, peers, topology, outbox, config, `diag/events`, `diag/sync`, shutdown). The chat
+> routes come from the `messages` service and the rest from the services that own them.
+> There is no mailbox route. A malformed `Last-Event-ID`, `since` or `types` is `400`.
+
 **Responsibility.** Serves the local control API of `API.md` and the built ClawView
 console over HTTP on loopback, and nothing else. It authenticates every API request,
 defeats DNS rebinding and cross-site requests, and streams the EventBus to clients.
 
-**Files.** `src/gate/api-server.js`, `test/unit/api-server.test.js`,
-`test/integration/api.test.js`.
+**Files.** `src/gate/api-server.js`, `test/unit/gate-api-server.test.js`,
+`test/integration/api.test.js`, `test/e2e/api.test.js`.
 **Imports.** `node:http`, `node:fs/promises`, `node:path`, `core/crypto/primitives.js`
 (`randomBytes`, `timingSafeEqual`, `sha256`), `core/wire/schema.js`, `core/wire/types.js`,
 `vault/store.js` (`atomicWriteFile`), `core/errors.js`.
@@ -1996,73 +2119,58 @@ header can be set:
 
 ### 8.6 `src/cli/` and `bin/clawnet.js`
 
-**Responsibility.** The `clawnet` command: creates identities, runs a node in the
-foreground, talks to a running node through the control API, and launches a local
-multi-node development network. It contains no protocol logic.
+**Responsibility.** The `clawnet` command: creates identities, runs a node in the foreground,
+talks to a running node through the control API, and launches a local multi-node network. It
+contains no protocol logic.
 
-**Files.** `bin/clawnet.js` (calls `main(process.argv.slice(2))`), `src/cli/main.js`
-(argument parsing with `node:util` `parseArgs`, dispatch, exit codes),
-`src/cli/commands.js`, `src/cli/client.js` (`ApiClient`), `src/cli/devnet.js`,
-`src/cli/standard.js`; `test/e2e/cli.test.js`, `test/e2e/devnet.test.js`.
-**Imports.** Everything.
+**Files.** `bin/clawnet.js` (calls `main(process.argv.slice(2))`), `src/cli/main.js` (parsing
+with `node:util` `parseArgs`, dispatch, exit codes), `src/cli/commands.js`, `src/cli/client.js`
+(`ApiClient`), `src/cli/lifecycle.js` (`init` and `start`), `src/cli/devnet.js`, `src/cli/format.js`,
+`src/cli/errors.js`; `test/unit/cli-main.test.js`, `test/unit/cli-client.test.js`,
+`test/e2e/cli.test.js`, `test/e2e/devnet.test.js`. The service list is `defaultServices()` in
+`src/services.js`.
 
-```js
-// standard.js
-export function standardServices(): Service[]
-// client.js
-export class ApiClient {
-  constructor({ url, token })
-  static fromDataDir(dataDir): Promise<ApiClient>      // reads runtime.json and api-token
-  request(method, path, body?): Promise<any>           // throws an Error with .status and .code from the error body
-  events({ types, lastEventId, signal }): AsyncIterable<{ id, type, event }>
-}
-// devnet.js
-export async function startDevnet({ nodes, baseDir, topology = 'ring', ui = false, onReady })
-  // -> { nodes: [{ index, nodeId, dataDir, listen, api, pid }], stop(): Promise<void> }
-```
-
-Global options: `--data-dir <dir>` (else `resolveDataDir`), `--json` (machine output: one
-JSON document on stdout). Exit codes: 0 success, 1 failure, 2 usage error, 3 the node is
-not running.
+Global options: `--data-dir <dir>` (`-d`; else `resolveDataDir`), `--json` (one JSON document on
+standard output), `--help`, `--version`. Exit codes: 0 success, 1 failure, 2 usage error, 3 no
+node is running.
 
 | Command | Does |
 | --- | --- |
-| `init [--passphrase-file <f>] [--no-passphrase]` | create the data dir, config defaults and keystore; print the NodeId. Refuses to overwrite. Without either flag it prompts on a TTY and warns when the keystore is left unencrypted |
-| `start [--listen host:port] [--api-port n] [--bootstrap addr]... [--network id] [--network-key-file f] [--no-multicast] [--passphrase-file f]` | run a node in the foreground with `standardServices()`. When ready, prints one line `{"event":"ready","nodeId":…,"listen":"tcp://…","api":"http://…","dataDir":…}` on stdout. `SIGINT`/`SIGTERM` stop it cleanly. The passphrase comes from the file, else `CLAWNET_PASSPHRASE`, else a TTY prompt |
-| `passwd` | `Keystore.changePassphrase` |
-| `status`, `id`, `peers`, `topology`, `routes`, `outbox`, `counters`, `config` | GET the matching endpoint and print it |
+| `init [--network <id>] [--passphrase-file <f> \| --no-passphrase]` | create the data directory, the network record, a starter `config.json` and the keystore; print the NodeId. Refuses to overwrite an identity. Without either passphrase flag it prompts on a terminal; with `--no-passphrase` it warns that the keystore is unencrypted |
+| `start [--listen host:port] [--api-port n] [--bootstrap addr]... [--network id] [--network-key-file f] [--multicast \| --no-multicast] [--passphrase-file f]` | run a node in the foreground with `defaultServices()`; refuses to start without an identity. When ready, prints one line `{"event":"ready","nodeId":...,"listen":...,"api":...,"dataDir":...}` on standard output. `SIGINT`, `SIGTERM` and `SIGBREAK` stop it cleanly; a second signal exits at once. The passphrase comes from the file, else `CLAWNET_PASSPHRASE`, else a hidden prompt on a terminal |
+| `id`, `status`, `peers`, `routes`, `topology`, `outbox`, `counters`, `config` | GET the matching endpoint and print it |
 | `connect <addr>`, `disconnect <id>` | peers endpoints |
-| `send <id> <text>`, `inbox [<id>]` | messages endpoints |
-| `channels`, `join <name> [--key <b64> \| --new-key]`, `leave <name>`, `cast <name> <text>`, `history <name>` | channels endpoints; `--new-key` generates 32 random bytes and prints them once |
-| `send-file <id> <path>`, `transfers`, `accept <tid>`, `reject <tid>`, `cancel <tid>` | files endpoints |
-| `ping <id> [-c n]`, `trace <id>` | diagnostics endpoints |
-| `events [--types a,b]` | follow the event stream, one JSON event per line |
-| `token` | print the API token |
-| `ui` | print `http://<host>:<port>/#token=<token>`; with `--open` launch the browser |
-| `stop` | `POST /shutdown` and wait until `runtime.json` is gone |
-| `devnet --nodes <n> [--topology line\|ring\|star\|mesh] [--base-dir d] [--ui]` | start `n` child nodes and stay in the foreground until interrupted |
+| `send <id> <text...>`, `inbox [<id>] [--limit n] [--before seq]` | messages endpoints |
+| `ping <id> [-c n] [--interval ms] [--timeout ms]`, `trace <id> [--max-hops n] [--timeout ms]` | diagnostics; `ping` exits 1 when no probe is answered, `trace` when the destination is not reached |
+| `events [--types a,b.*] [--count n] [--replay]` | follow the event stream, one JSON event per line |
+| `ui [--open]` | print the console address with the token after `#` |
+| `stop` | `POST /shutdown` and wait until the node has exited |
+| `devnet --nodes <n> [--topology line\|ring\|star\|mesh] [--base-dir d]` | start `n` nodes, as child processes, and stay in the foreground until all have stopped; default topology `mesh` |
 
-Node ids on the command line may be abbreviated to any unique prefix of at least 8
-characters among the ids in the topology and peer list; the CLI resolves it, the API
-takes full ids only.
+**Not built:** commands for channels (`channels`, `join`, `leave`, `cast`, `history`), file
+transfer (`send-file`, `transfers`, `accept`, `reject`, `cancel`), `passwd` and `token`. The
+channel and file commands would each be a thin client call in `commands.js`; use the API or the
+console. There is no `token` command because the only place the CLI prints the token is the
+console URL of `ui` and `devnet`.
 
-**Devnet.** Creates `baseDir/node-<i>` for each node, runs `init --no-passphrase` in each,
-reads the node ids, then writes each `config.json` with `listen` on `127.0.0.1` port 0,
-the API on port 0, multicast disabled, `discovery.pex` false and `peers.allow` set to the
-node's neighbours in the chosen topology, so the topology is exactly the one asked for.
-It starts node 0, reads its `ready` line, and starts the others with `--bootstrap`
-addresses of their lower-numbered neighbours. `stop()` sends `SIGTERM` (on Windows,
-`POST /shutdown`) and kills what has not exited after five seconds. With `--ui` it prints
-the `ui` link of every node.
+Node ids on the command line may be abbreviated to any unique prefix of at least 8 characters
+among the ids in the topology and peer list; the CLI resolves it, the API takes full ids only.
 
-**Tests** (end to end, separate OS processes, own temp dirs, ports from the `ready` line):
-`init` then `start` then `status` then `stop`, checking exit codes and that `runtime.json`
-and `lock` are gone; `init` twice refuses; a wrong passphrase fails to start with exit 1
-and no stack trace; a second `start` on the same data dir fails with the lock message; a
-three-node devnet line: `send` from node 0 to node 2 appears in node 2's `inbox`, `trace`
-shows node 1 in the middle, `cast` reaches all; killing node 1 with `SIGKILL` leaves the
-message in node 0's `outbox`, and restarting node 1 delivers it; `events` prints
-`link.up`; a client command against a stopped node exits 3.
+**Devnet.** Creates `baseDir/node-<i>` (a temporary directory when `--base-dir` is omitted,
+removed when the devnet ends), runs `init --no-passphrase` in each, and writes each `config.json`
+with `listen` on `127.0.0.1` port 0, the API on port 0, multicast and peer exchange off,
+`discovery.allowLoopback` on and `peers.target` set to the node's neighbour count. It does not
+use `peers.allow` to shape the topology: the allow list also filters routing-record origins
+(DESIGN.md 15.19), so a node would never learn of nodes two hops away. It starts node 0, reads
+its `ready` line, starts the others with `--bootstrap` addresses of their lower-numbered
+neighbours, and returns when every node has links, a route and an identity card for every
+other node, so a message can be sent as soon as it prints. Ctrl+C or `clawnet stop` on each
+node ends it.
+
+**Tests** (separate OS processes, own temp dirs, ports from the `ready` line): `init`, `start`,
+`status`, a refused second `start` and `stop`, with exit codes and the files left behind; the
+devnet and its commands; a crash-recovery run. The passphrase prompt on a terminal and a real
+Ctrl+C were not exercised.
 
 ## 9. Event catalogue
 
@@ -2097,10 +2205,10 @@ The node constructs the bus with `capacity: 5000`.
 | Event | Data |
 | --- | --- |
 | `peer.dialing` | `{ addr, peer: NodeId \| null, source, attempt }` |
-| `peer.dial_failed` | `{ addr, peer: NodeId \| null, reason, retryInMs }` |
+| `peer.dial_failed` | `{ addr, peer: NodeId \| null, reason, retryInMs: number \| null }` (null: not redialled) |
 | `peer.refused` | `{ addr, peer, direction: "in" \| "out", reason }` (`self`, `blocked`, `not-allowed`, `full`) |
 | `link.up` | `{ peer, linkId, direction, addr, agent, caps, rttMs, cost }` |
-| `link.down` | `{ peer, linkId, reason, remote: boolean, durationMs }` |
+| `link.down` | `{ peer, linkId, reason, remote: boolean, durationMs }` (`reason`: a BYE reason, or `auth`, `eof`, `socket`, `overflow`, `unknown`) |
 | `link.metric` | `{ peer, rttMs: number \| null, srttMs, cost, misses }` (`rttMs` null for a miss) |
 | `link.throttled` | `{ peer, by: "packets" \| "bytes" }` |
 
@@ -2111,6 +2219,8 @@ The node constructs the bus with `capacity: 5000`.
 | `discovery.candidate` | `{ addr, peer: NodeId \| null, source }` (a new address entered the book) |
 | `discovery.error` | `{ source: "multicast", message }` |
 | `peer.record` | `{ peer, seq, addrs: Address[], caps }` (a newer peer record was accepted) |
+| `peer.equivocation` | `{ peer, seq }` (two valid peer records of one origin with one `seq`) |
+| `discovery.clone_suspected` | `{ peer, seq, bumps }` (another node seems to use this node's identity; `peer` is this node) |
 
 **Routing** (`core/routing/forwarder.js`)
 
@@ -2119,13 +2229,14 @@ The node constructs the bus with `capacity: 5000`.
 | `lsa.originated` | `{ seq, links: number, reason }` |
 | `lsa.accepted` | `{ origin, seq, changed: boolean, from: NodeId \| null }` |
 | `lsa.expired` | `{ origin }` |
+| `lsa.equivocation` | `{ origin, seq }` (two valid LSAs of one origin with one `seq`; emitted by `core/node.js`) |
 | `routes.changed` | `{ rev, total, reachable: NodeId[], unreachable: NodeId[], changed: number }` (`reachable`/`unreachable` are the differences; `changed` counts destinations whose next hop or cost changed) |
 | `topology.changed` | `{ rev, full: boolean, nodesAdded: [{ id, caps }], nodesUpdated: [{ id, caps }], nodesRemoved: NodeId[], linksAdded: Link[], linksUpdated: Link[], linksRemoved: [{ a, b }] }` with `Link = { a, b, costAB: number \| null, costBA: number \| null, state: "confirmed" \| "half" }` and `a < b`. `full: true` (lists empty) means the difference was too large: fetch the snapshot |
 | `packet.sent` | `{ id, type, dst, nextHop, try: number \| null, bytes, path: NodeId[] \| null }` (originated here; `path` is this node's predicted route, self first) |
 | `packet.forwarded` | `{ id, type, dst, from, nextHop, ttl, bytes }` (`ttl` as sent on) |
 | `packet.delivered` | `{ id, type, from, bytes }` (arrived for this node) |
 | `packet.queued` | `{ id, type, dst, from, reason, queued: number }` (`no-route`, `split-horizon`, `backpressure`) |
-| `packet.dropped` | `{ id, type, dst, from: NodeId \| null, reason }` (`ttl`, `duplicate`, `no-transit`, `transit-full`, `hold-expired`, `malformed`, `no-handler`, `auth`, `busy`) |
+| `packet.dropped` | `{ id, type, dst, from: NodeId \| null, reason }` (`ttl`, `duplicate`, `no-transit`, `transit-full`, `hold-expired`, `malformed`, `no-handler`, `oversize`, `auth`) |
 
 **Messaging** (`core/messaging/reliable.js`)
 
@@ -2162,7 +2273,7 @@ The node constructs the bus with `capacity: 5000`.
 | `file.paused` | `{ id, reason }` (`unreachable`, `stalled`, `queued`) |
 | `file.resumed` | `{ id }` |
 
-**Custody** (`gate/relay.js`)
+**Custody** (`gate/relay.js`, **not built: none of these events is ever emitted**)
 
 | Event | Data |
 | --- | --- |
@@ -2232,7 +2343,9 @@ class Netem {
 export const FAST_TIMERS = Object.freeze({
   keepaliveMs: 200, peerTimeoutMs: 800, handshakeTimeoutMs: 2000,
   redialMinMs: 100, redialMaxMs: 1000, redialJitter: 0.2,
-  lsaRefreshMs: 1000, lsaMaxAgeMs: 3500, lsaTombstoneMs: 60000, spfDebounceMs: 10,
+  lsaRefreshMs: 1000, lsaMaxAgeMs: 3500, lsaTombstoneMs: 60000,
+  lsaMinIntervalMs: 50,      // must stay below lsaMaxAgeMs or validateConfig refuses the configuration
+  spfDebounceMs: 10,
   syncIntervalMs: 300, gossipBatchMs: 5,
   retransmitMinMs: 200, retransmitMaxMs: 2000, transitHoldMs: 2000, beaconIntervalMs: 200,
 });
@@ -2279,20 +2392,26 @@ class Cluster {
   that is connected to it through running nodes and uncut edges, and none to the others.
 - `waitFor` throws an error that includes `message` and each node's `status()` on timeout.
 
-### 10.3 Integration tests of wave 2 (`test/integration/`)
+### 10.3 Integration and end-to-end tests (as built)
 
-Real nodes over loopback TCP; these are the test plan of `core/node.js`.
+Real nodes over loopback TCP; these are the test plan of `core/node.js` and of the services.
 
-| File | Must prove |
+| File | Proves |
 | --- | --- |
-| `link.test.js` | two nodes link and see each other's id, agent and caps; different `networkId` and different or missing `networkKey` never link and never emit `link.up`; allow list, block list and self-dial are refused with their reasons; simultaneous dials leave one link; `stop()` is seen as `shutdown` |
-| `routing.test.js` | on a line of four, every node has routes to the other three with the right next hop and hop count; with two paths, added latency on one moves the route to the other within a few keepalives and moves it back when the latency is removed; a cut link reroutes; a `transit: false` node carries no transit traffic but stays reachable; LSAs of a stopped node expire and its routes go |
-| `messaging.test.js` | a message from A to C through B is delivered once and acked; `packet.forwarded` appears on B; B's events and the capture on both links contain no plaintext; with B's onward link blackholed the message is retransmitted with a growing `try` and arrives after `heal()`; with no route it waits in the outbox and leaves at once when the route appears; unknown destination fails synchronously |
-| `restart.test.js` | a sender stopped with a pending message delivers it after restart; a receiver restarted between delivery and a retransmission does not deliver twice; a restarted node advertises a higher LSA `seq` and its neighbours redial; a corrupted `state.json` and a truncated `outbox.log` are recovered with `store.recovered` and the node starts |
-| `partition.test.js` | two triangles joined by one proxied edge: after `partition` each side drops routes to the other and messages across wait; after `heal` the LSDBs converge, the outboxes drain, and every message is delivered exactly once |
-| `discovery.test.js` | with `pex` on, a node bootstrapped to one peer learns and dials others until it reaches `peers.target`; peer records of unlinked nodes arrive, so a message can be sealed to a node two hops away |
-| `hostile.test.js` | a test peer built from `establishChannel` that then sends a packet with an unknown type, an invalid `DATA` header, an oversized frame, a non-canonical header, and a forged LSA is disconnected each time with `protocol` and refused for the penalty period; a flood above the rate limit is throttled and the node stays responsive to a third node |
-| `wire-privacy.test.js` | across a session with a handshake, chat, a cast and LSAs, the captured bytes contain neither NodeId, nor any card field, nor the network id, nor any message text |
+| `integration/links.test.js` | two peers link through netem, exchange packets, and no plaintext crosses the wire; wrong network id, wrong network key, tampered card, blocklisted id and self-dial are refused; a cut link is noticed and redialed with growing backoff; a blackholed link is closed with `timeout`; simultaneous dials leave one link; rekeying on a live link; `DATA` beyond the budget is dropped without a disconnect; malformed frames and packets close the link with `protocol` and the peer is refused afterwards |
+| `integration/node.test.js` | independent nodes with their own identities; authentication refusals; service ordering and registration rules; restart keeps the identity, advertises a higher sequence and still rejects a replay |
+| `integration/routing.test.js` | a diamond reroutes when a node disappears; a cut link is redialed; added latency moves traffic to the cheaper path |
+| `integration/messaging.test.js` | direct and multi-hop delivery with acks and no plaintext on the wire; offline queue that survives a restart; duplicates and replays delivered once |
+| `integration/partition.test.js` | both halves keep working; messages queued across the cut are delivered after it heals; the link-state databases converge |
+| `integration/discovery.test.js` | a node given one bootstrap address learns the others through peer exchange |
+| `integration/diag.test.js` | ping and traceroute across a four-node line, with loss and rate limits |
+| `integration/cast.test.js` | a cast reaches every node once and in order; both sides of a partition converge; a non-member relays an encrypted cast it cannot read and members refuse a re-signed ciphertext |
+| `integration/files.test.js` | a multi-megabyte file arrives with the same SHA-256 and the wire never carries its bytes; an interrupted transfer resumes without resending what was acknowledged; a changed source aborts; hostile names cannot escape the downloads directory |
+| `integration/api.test.js` | the API documents describe the network that exists; messages, partitions, diagnostics and a live view built the documented way |
+| `e2e/cli.test.js`, `e2e/devnet.test.js`, `e2e/api.test.js` | separate processes: `init`, `start`, `status`, `stop` and exit codes; the devnet and its commands; the API against real processes, including crash recovery |
+
+No test of the form "hostile.test.js" or "wire-privacy.test.js" exists; the hostile-peer and
+wire-capture checks are inside the files above.
 
 ## 11. End-to-end flows
 
@@ -2374,6 +2493,9 @@ Module names in brackets say who does the step.
    the next `routes.changed` that makes C reachable triggers an attempt at once.
 
 ### 11.4 Custody deposit and delivery (A to B through mailbox M)
+
+> **Designed, not built.** No mailbox service exists, so this flow never happens: a message for an
+> unreachable node waits in the sender's outbox (11.3) and is delivered when the route appears.
 
 1. [A messenger] A sends a reliable message to B. B is unreachable: the entry is `waiting`.
 2. [A relay] At the next sweep after `retransmitMinMs`, the entry qualifies. M is the
@@ -2504,12 +2626,12 @@ Every queue and table in waves 2 and 3, and what bounds it.
 | Delivered-id cache | `limits.seenCacheEntries`, message lifetime plus skew | messenger |
 | In-flight inbound messages | 1024 | messenger |
 | Conversations | 1000 messages per peer, 1000 peers | conversations |
-| Sync packets | 256 records, 256 KiB, 4096 pending per peer | node (SyncEngine limits) |
+| Sync packets | 256 records, 64 KiB, 4096 pending per peer | node (SyncEngine limits) |
 | Casts | 64 per stream, 1024 streams, 16 streams per origin, `limits.castPerOriginPerMin` | cast |
 | Cast history | 1000 per joined channel | cast |
 | Transfers | 8 active per direction, 64 pending offers (8 per peer), 2^20 chunks, `files.maxSizeBytes` | files |
-| Mailbox | `mailbox.maxEntries`, `maxBytesTotal`, `maxBytesPerDepositor` | relay |
-| Receipts | 20000 | relay |
+| Mailbox | `mailbox.maxEntries`, `maxBytesTotal`, `maxBytesPerDepositor` | relay (not built; no effect) |
+| Receipts | 20000 | relay dataset (not built; nothing publishes) |
 | Probe replies | 20 per second, 5 per requester; 256 pending probes | diag |
 | API | 64 KiB bodies, 64 connections, 16 event streams, 1 MiB per stream queue | api-server |
 | Event ring buffer | 5000 events | node |
@@ -2563,10 +2685,10 @@ waves 2 and 3 and should be folded into DESIGN.md or PROTOCOL.md.
     handler is not. Handlers must be idempotent. (5.7, 7.3)
 20. **A forged packet does not poison the delivered-id cache**: ids are recorded only
     after authentication and handling. (5.7)
-21. **Custody deposits are sealed `custody-deposit` messages**, not marked `DATA` packets;
+21. **(Not built.)** **Custody deposits are sealed `custody-deposit` messages**, not marked `DATA` packets;
     `cust` appears only on the mailbox's delivery leg; receipts are a flooded dataset;
     deposits are keyed by id and content hash. (8.3)
-22. **Cast rate limit** is a per-origin token bucket on arrival with a burst of four
+22. **(Superseded by DESIGN.md 15.25 and 15.24; see 8.1.)** **Cast rate limit** is a per-origin token bucket on arrival with a burst of four
     minutes' worth, consumed only for new records; over-limit records are soft-rejected.
     Cast associated data is `{ chan, n, origin, ts }`. Cast bodies are UTF-8 text. (8.1)
 23. **File transfer wire details**: message kinds, sack format, window and stall rules,
