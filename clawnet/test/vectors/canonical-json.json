@@ -1,0 +1,379 @@
+{
+  "description": "Canonical JSON vectors: RFC 8785 restricted to ASCII keys and safe integers. Shared by ClawNet (clawnet/src/core/wire/canonical.js) and PortLock (portlock/core/canonical.py). Each \"input\" and \"canonical\" is JSON text carried inside a JSON string.",
+  "valid": [
+    {
+      "name": "empty object",
+      "input": "{}",
+      "canonical": "{}"
+    },
+    {
+      "name": "empty array",
+      "input": "[]",
+      "canonical": "[]"
+    },
+    {
+      "name": "null",
+      "input": "null",
+      "canonical": "null"
+    },
+    {
+      "name": "true",
+      "input": "true",
+      "canonical": "true"
+    },
+    {
+      "name": "false",
+      "input": "false",
+      "canonical": "false"
+    },
+    {
+      "name": "zero",
+      "input": "0",
+      "canonical": "0"
+    },
+    {
+      "name": "negative one",
+      "input": "-1",
+      "canonical": "-1"
+    },
+    {
+      "name": "negative zero becomes zero",
+      "input": "[-0]",
+      "canonical": "[0]"
+    },
+    {
+      "name": "largest safe integer",
+      "input": "9007199254740991",
+      "canonical": "9007199254740991"
+    },
+    {
+      "name": "smallest safe integer",
+      "input": "-9007199254740991",
+      "canonical": "-9007199254740991"
+    },
+    {
+      "name": "empty string",
+      "input": "\"\"",
+      "canonical": "\"\""
+    },
+    {
+      "name": "keys sort by code unit",
+      "input": "{\"b\":1,\"a\":2,\"B\":3,\"A\":4,\"aa\":5,\"_\":6,\"1\":7}",
+      "canonical": "{\"1\":7,\"A\":4,\"B\":3,\"_\":6,\"a\":2,\"aa\":5,\"b\":1}"
+    },
+    {
+      "name": "prefix key sorts first",
+      "input": "{\"ab\":1,\"a\":2,\"abc\":3}",
+      "canonical": "{\"a\":2,\"ab\":1,\"abc\":3}"
+    },
+    {
+      "name": "whitespace is removed",
+      "input": "{ \"a\" : [ 1 , 2 , { \"c\" : null } ] ,\n\t\"b\" : true }",
+      "canonical": "{\"a\":[1,2,{\"c\":null}],\"b\":true}"
+    },
+    {
+      "name": "nested objects sort at every level",
+      "input": "{\"z\":{\"y\":1,\"x\":2},\"a\":[{\"d\":1,\"c\":2}]}",
+      "canonical": "{\"a\":[{\"c\":2,\"d\":1}],\"z\":{\"x\":2,\"y\":1}}"
+    },
+    {
+      "name": "array order is preserved",
+      "input": "[3,1,2,\"b\",\"a\"]",
+      "canonical": "[3,1,2,\"b\",\"a\"]"
+    },
+    {
+      "name": "control characters use short or lowercase escapes",
+      "input": "\"\\u0000\\u0001\\b\\t\\n\\u000b\\f\\r\\u001f\"",
+      "canonical": "\"\\u0000\\u0001\\b\\t\\n\\u000b\\f\\r\\u001f\""
+    },
+    {
+      "name": "uppercase hex escape is lowercased",
+      "input": "\"\\u001F\\u000B\"",
+      "canonical": "\"\\u001f\\u000b\""
+    },
+    {
+      "name": "quote and backslash are escaped",
+      "input": "\"a\\\"b\\\\c\"",
+      "canonical": "\"a\\\"b\\\\c\""
+    },
+    {
+      "name": "solidus is not escaped",
+      "input": "\"a\\/b\"",
+      "canonical": "\"a/b\""
+    },
+    {
+      "name": "escaped ascii is emitted literally",
+      "input": "\"\\u0041\\u007a\"",
+      "canonical": "\"Az\""
+    },
+    {
+      "name": "delete is emitted literally",
+      "input": "\"\\u007f\"",
+      "canonical": "\"\""
+    },
+    {
+      "name": "non-ascii is emitted literally",
+      "input": "\"\\u00e9\\u20ac\"",
+      "canonical": "\"é€\""
+    },
+    {
+      "name": "surrogate pair is emitted literally",
+      "input": "\"\\ud83d\\ude00\"",
+      "canonical": "\"😀\""
+    },
+    {
+      "name": "line and paragraph separators are emitted literally",
+      "input": "\"\\u2028\\u2029\"",
+      "canonical": "\"  \""
+    },
+    {
+      "name": "empty key",
+      "input": "{\"\":1}",
+      "canonical": "{\"\":1}"
+    },
+    {
+      "name": "keys are escaped like strings",
+      "input": "{\"a\\\\b\":2,\"a\\\"b\":1}",
+      "canonical": "{\"a\\\"b\":1,\"a\\\\b\":2}"
+    },
+    {
+      "name": "space and tilde keys",
+      "input": "{\"~\":1,\" \":2,\"a b\":3}",
+      "canonical": "{\" \":2,\"a b\":3,\"~\":1}"
+    },
+    {
+      "name": "thirty-two nested arrays",
+      "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "canonical": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+    },
+    {
+      "name": "signed record shape",
+      "input": "{\"type\":\"lsa\",\"origin\":\"abc\",\"seq\":1731700000000,\"links\":[{\"peer\":\"def\",\"cost\":12}],\"caps\":{\"transit\":true}}",
+      "canonical": "{\"caps\":{\"transit\":true},\"links\":[{\"cost\":12,\"peer\":\"def\"}],\"origin\":\"abc\",\"seq\":1731700000000,\"type\":\"lsa\"}"
+    }
+  ],
+  "rejectValue": [
+    {
+      "name": "fraction",
+      "input": "1.5"
+    },
+    {
+      "name": "fraction inside array",
+      "input": "[1,0.25]"
+    },
+    {
+      "name": "overflow to infinity",
+      "input": "[1e400]"
+    },
+    {
+      "name": "integer above safe range",
+      "input": "9007199254740992"
+    },
+    {
+      "name": "integer below safe range",
+      "input": "-9007199254740992"
+    },
+    {
+      "name": "non-ascii key",
+      "input": "{\"é\":1}"
+    },
+    {
+      "name": "escaped non-ascii key",
+      "input": "{\"\\u00e9\":1}"
+    },
+    {
+      "name": "control character in key",
+      "input": "{\"a\\u0001\":1}"
+    },
+    {
+      "name": "delete in key",
+      "input": "{\"a\\u007f\":1}"
+    },
+    {
+      "name": "lone high surrogate",
+      "input": "\"\\ud800\""
+    },
+    {
+      "name": "lone low surrogate",
+      "input": "\"\\udc00\""
+    },
+    {
+      "name": "reversed surrogate pair",
+      "input": "\"\\udc00\\ud800\""
+    },
+    {
+      "name": "lone surrogate nested",
+      "input": "{\"a\":[\"\\ud83d\"]}"
+    },
+    {
+      "name": "thirty-three nested arrays",
+      "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+    }
+  ],
+  "rejectStrict": [
+    {
+      "name": "unsorted keys",
+      "input": "{\"b\":1,\"a\":2}"
+    },
+    {
+      "name": "space after colon",
+      "input": "{\"a\": 1}"
+    },
+    {
+      "name": "leading space",
+      "input": " {}"
+    },
+    {
+      "name": "trailing newline",
+      "input": "{}\n"
+    },
+    {
+      "name": "space inside array",
+      "input": "[1, 2]"
+    },
+    {
+      "name": "duplicate key",
+      "input": "{\"a\":1,\"a\":2}"
+    },
+    {
+      "name": "duplicate key with equal values",
+      "input": "{\"a\":1,\"a\":1}"
+    },
+    {
+      "name": "escaped ascii letter",
+      "input": "\"\\u0041\""
+    },
+    {
+      "name": "uppercase hex escape",
+      "input": "\"\\u001F\""
+    },
+    {
+      "name": "escaped solidus",
+      "input": "\"\\/\""
+    },
+    {
+      "name": "escaped non-ascii",
+      "input": "\"\\u00e9\""
+    },
+    {
+      "name": "escaped surrogate pair",
+      "input": "\"\\ud83d\\ude00\""
+    },
+    {
+      "name": "long form of short escape",
+      "input": "\"\\u000a\""
+    },
+    {
+      "name": "negative zero",
+      "input": "-0"
+    },
+    {
+      "name": "float with zero fraction",
+      "input": "1.0"
+    },
+    {
+      "name": "exponent",
+      "input": "1e2"
+    },
+    {
+      "name": "uppercase exponent",
+      "input": "1E2"
+    },
+    {
+      "name": "negative exponent",
+      "input": "10e-1"
+    },
+    {
+      "name": "leading zero",
+      "input": "01"
+    },
+    {
+      "name": "plus sign",
+      "input": "+1"
+    },
+    {
+      "name": "trailing comma",
+      "input": "[1,]"
+    },
+    {
+      "name": "single quotes",
+      "input": "{'a':1}"
+    },
+    {
+      "name": "NaN",
+      "input": "NaN"
+    },
+    {
+      "name": "Infinity",
+      "input": "Infinity"
+    },
+    {
+      "name": "byte order mark",
+      "input": "﻿{}"
+    },
+    {
+      "name": "empty input",
+      "input": ""
+    },
+    {
+      "name": "two values",
+      "input": "{}{}"
+    },
+    {
+      "name": "fraction",
+      "input": "1.5"
+    },
+    {
+      "name": "fraction inside array",
+      "input": "[1,0.25]"
+    },
+    {
+      "name": "overflow to infinity",
+      "input": "[1e400]"
+    },
+    {
+      "name": "integer above safe range",
+      "input": "9007199254740992"
+    },
+    {
+      "name": "integer below safe range",
+      "input": "-9007199254740992"
+    },
+    {
+      "name": "non-ascii key",
+      "input": "{\"é\":1}"
+    },
+    {
+      "name": "escaped non-ascii key",
+      "input": "{\"\\u00e9\":1}"
+    },
+    {
+      "name": "control character in key",
+      "input": "{\"a\\u0001\":1}"
+    },
+    {
+      "name": "delete in key",
+      "input": "{\"a\\u007f\":1}"
+    },
+    {
+      "name": "lone high surrogate",
+      "input": "\"\\ud800\""
+    },
+    {
+      "name": "lone low surrogate",
+      "input": "\"\\udc00\""
+    },
+    {
+      "name": "reversed surrogate pair",
+      "input": "\"\\udc00\\ud800\""
+    },
+    {
+      "name": "lone surrogate nested",
+      "input": "{\"a\":[\"\\ud83d\"]}"
+    },
+    {
+      "name": "thirty-three nested arrays",
+      "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+    }
+  ]
+}

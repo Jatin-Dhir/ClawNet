@@ -1,0 +1,29 @@
+{
+  "name": "clawnet",
+  "version": "0.1.0",
+  "description": "ClawNet node engine: an authenticated, end-to-end encrypted peer-to-peer overlay network.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "bin": {
+    "clawnet": "bin/clawnet.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "ui",
+    "docs"
+  ],
+  "scripts": {
+    "start": "node bin/clawnet.js start",
+    "test": "node --test \"test/unit/**/*.test.js\" \"test/integration/**/*.test.js\" \"test/e2e/**/*.test.js\"",
+    "test:unit": "node --test \"test/unit/**/*.test.js\"",
+    "test:integration": "node --test \"test/integration/**/*.test.js\"",
+    "test:e2e": "node --test \"test/e2e/**/*.test.js\""
+  }
+}
