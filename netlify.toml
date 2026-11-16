@@ -4,7 +4,7 @@
   base = "/"
 
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "22"
   CI = "true"
 
 # Redirect all routes to index.html for SPA routing

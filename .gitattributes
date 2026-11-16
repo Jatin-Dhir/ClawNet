@@ -1,0 +1,4 @@
+# The node engine and console keep LF line endings on every platform, so test vectors
+# and fixtures have the same bytes everywhere.
+clawnet/** text=auto eol=lf
+src/clawview/** text=auto eol=lf

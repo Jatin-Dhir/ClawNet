@@ -43,3 +43,8 @@ coverage/
 
 # Husky (optional - can be committed)
 # .husky/
+
+# ClawNet engine
+clawnet/ui/
+.clawnet/
+*.part

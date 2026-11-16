@@ -6,7 +6,7 @@ import pluginReactRefresh from "eslint-plugin-react-refresh";
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**", "build/**", "tailwind.config.js"],
+    ignores: ["dist/**", "node_modules/**", "build/**", "tailwind.config.js", "clawnet/ui/**"],
   },
   pluginJs.configs.recommended,
   {
@@ -45,6 +45,26 @@ export default [
       react: {
         version: "detect",
       },
+    },
+  },
+  {
+    // The node engine and its tests run on Node.js, not in a browser.
+    files: ["clawnet/**/*.js"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      "no-unused-vars": ["error", {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }],
+      "eqeqeq": ["error", "always", { "null": "ignore" }],
+      "no-var": "error",
+      "prefer-const": "error",
+      "no-throw-literal": "error",
     },
   },
 ];
