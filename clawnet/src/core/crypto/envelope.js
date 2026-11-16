@@ -5,8 +5,9 @@
  *
  *   - scheme 0x01, sealMessage/openMessage: a one-way Noise_X exchange from the sender's
  *     e2e key to the recipient's e2e key, with the destination and message id bound into
- *     the prologue, and the sender's identity-key signature over the handshake hash in
- *     `meta.hs` (DESIGN.md 15.9). Carries messages, acks and file offers.
+ *     the prologue, and the sender's identity-key signature over the handshake hash and
+ *     the message itself in `meta.hs` (DESIGN.md 15.9). Carries messages, acks and file
+ *     offers.
  *   - scheme 0x02, sealChunk/openChunk: ChaCha20-Poly1305 under a transfer key that was
  *     itself delivered inside a scheme-1 message. Carries file chunks.
  *   - castEncrypt/castDecrypt: ChaCha20-Poly1305 under a key derived per message from a
@@ -103,10 +104,15 @@ const CHUNK_HEADER_LENGTH = 1 + TRANSFER_ID_LENGTH + 4;
  * The plaintext is `u16be(meta length) || meta || content`, where `meta` is canonical JSON
  * of the given object plus `card` (the sender's identity card), `ts` (send time, ms) and
  * `hs`: base64 of the sender's Ed25519 identity-key signature over
- * `utf8(Domain.E2E_AUTH) || 0x00 || h`, where h is the Noise handshake hash of this
- * message (DESIGN.md 15.9). The signature is what still authenticates the sender to a
+ *
+ *   utf8(Domain.E2E_AUTH) || 0x00 || h || SHA-256(u32be(len(meta')) || meta' || content)
+ *
+ * where h is the Noise handshake hash of this message and meta' is the canonical `meta`
+ * without `hs` (DESIGN.md 15.9). The signature is what still authenticates the sender to a
  * recipient whose e2e private key has been stolen: with that key alone, anyone can
- * complete a Noise_X handshake that claims any sender's e2e key.
+ * complete a Noise_X handshake that claims any sender's e2e key, and can derive the
+ * transport key of a genuine message. Covering h stops the first; covering meta' and the
+ * content stops the second, a genuine handshake carrying substituted content.
  *
  * @param {object} params
  * @param {Identity} params.sender             the sending node
@@ -174,7 +180,10 @@ export function sealMessage({
   );
   // The total length travels inside the handshake message, authenticated with it.
   const first = handshake.writeMessage(u32(total));
-  const hs = base64Encode(sender.sign(Domain.E2E_AUTH, handshake.handshakeHash));
+  const unsigned = canonicalBytes({ ...fields, card: sender.card, ts });
+  const hs = base64Encode(
+    sender.sign(Domain.E2E_AUTH, authInput(handshake.handshakeHash, unsigned, content))
+  );
   const metaBytes = canonicalBytes({ ...fields, card: sender.card, ts, hs });
   const plaintext = Buffer.concat([u16(metaBytes.length), metaBytes, content]);
   const { tx } = handshake.split();
@@ -195,19 +204,15 @@ export function sealMessage({
  * and `id`; `meta` is canonical JSON with a string `kind` and an integer `ts`; the
  * identity card in `meta` verifies and its e2e key is the Noise static key that sealed
  * the message; `meta.hs` is the card's identity key's signature over this message's
- * handshake hash; and `ts` lies within `[now - maxAgeMs, now + maxFutureMs]`.
+ * handshake hash and over the hash of its `meta` (without `hs`) and content; and `ts`
+ * lies within `[now - maxAgeMs, now + maxFutureMs]`.
  *
- * The returned `senderId` is therefore authenticated. Replay protection is not provided
- * here: the caller keeps a cache of seen (senderId, id) pairs, written only after this
- * function succeeds, and keeps each entry until `ts + maxAgeMs + maxFutureMs`
- * (DESIGN.md 15.10).
- *
- * Limitation: `hs` covers the handshake hash, which binds the destination, the id, both
- * static keys, the ephemeral key and the announced length, but not the transport records.
- * Someone who holds this node's e2e private key can derive the transport key of a genuine
- * message and, by intercepting it before it is delivered, replace its content with other
- * content of the same length under the same id and `ts`. They cannot create a new
- * message in the sender's name.
+ * The returned `senderId` is therefore authenticated, and so is everything returned with
+ * it, even against someone who holds this node's e2e private key: they can read a genuine
+ * message and re-encrypt it, but any change to its `meta` or content breaks the signature.
+ * Replay protection is not provided here: the caller keeps a cache of seen (senderId, id)
+ * pairs, written only after this function succeeds, and keeps each entry until
+ * `ts + maxAgeMs + maxFutureMs` (DESIGN.md 15.10).
  *
  * @param {object} params
  * @param {Identity} params.recipient       this node
@@ -307,16 +312,20 @@ function open(recipient, dst, id, body, time, maxAgeMs, maxFutureMs) {
     throw new AuthError('message was not sealed with the key on the sender identity card');
   }
   // The e2e key alone does not prove authorship: whoever holds the recipient's e2e private
-  // key can complete Noise_X claiming any static key. Only the sender's identity key can
-  // sign this session's handshake hash (DESIGN.md 15.9).
+  // key can complete Noise_X claiming any static key, and can re-encrypt a genuine
+  // message's transport records. Only the sender's identity key can sign this session's
+  // handshake hash together with what the message says (DESIGN.md 15.9).
   let signature;
   try {
     signature = base64Decode(meta.hs, SIGNATURE_LENGTH);
   } catch (cause) {
     throw new AuthError('message has no well-formed sender signature', { cause });
   }
-  if (!verifySignature(card.nodeId, Domain.E2E_AUTH, handshake.handshakeHash, signature)) {
-    throw new AuthError('sender signature over the handshake does not verify');
+  const content = plaintext.subarray(metaEnd);
+  const { hs: _signature, ...unsignedMeta } = meta;
+  const signed = authInput(handshake.handshakeHash, canonicalBytes(unsignedMeta), content);
+  if (!verifySignature(card.nodeId, Domain.E2E_AUTH, signed, signature)) {
+    throw new AuthError('sender signature over the handshake and content does not verify');
   }
   if (meta.ts < time - maxAgeMs) throw new AuthError('message is older than the accepted age');
   if (meta.ts > time + maxFutureMs) {
@@ -328,8 +337,20 @@ function open(recipient, dst, id, body, time, maxAgeMs, maxFutureMs) {
     senderId: card.nodeId,
     card: meta.card,
     meta,
-    content: Buffer.from(plaintext.subarray(metaEnd)),
+    content: Buffer.from(content),
   };
+}
+
+/**
+ * The bytes `meta.hs` signs after the domain (DESIGN.md 15.9):
+ * `h || SHA-256(u32be(len(meta')) || meta' || content)`. The length prefix keeps the
+ * boundary between meta' and the content unambiguous.
+ */
+function authInput(handshakeHash, unsignedMeta, content) {
+  return Buffer.concat([
+    handshakeHash,
+    sha256(u32(unsignedMeta.length), unsignedMeta, content),
+  ]);
 }
 
 /**

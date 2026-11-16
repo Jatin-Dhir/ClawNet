@@ -108,11 +108,26 @@ function parseBody(body) {
 const HS_SLOT = '#'.repeat(88);
 const HS_FIELD = `"hs":"${HS_SLOT}"`;
 
-/** Put base64(signer.sign(domain, h)) into the HS_SLOT of a plaintext, if it has one. */
+/**
+ * What `meta.hs` signs after its domain, written out from DESIGN.md 15.9 for a plaintext
+ * whose metadata holds HS_SLOT: `h || SHA-256(u32be(len(meta')) || meta' || content)`,
+ * where meta' is the metadata text with the `hs` member (and its comma) cut out.
+ */
+function authInput(h, plaintext) {
+  const metaLength = plaintext.readUInt16BE(0);
+  const metaText = plaintext.subarray(2, 2 + metaLength).toString('utf8');
+  assert.ok(metaText.includes(HS_FIELD));
+  const metaPrime = utf8(metaText.replace(`${HS_FIELD},`, '').replace(`,${HS_FIELD}`, ''));
+  const content = plaintext.subarray(2 + metaLength);
+  const digest = createHash('sha256').update(u32(metaPrime.length)).update(metaPrime).update(content).digest();
+  return Buffer.concat([h, digest]);
+}
+
+/** Put base64(signer.sign(domain, authInput)) into the HS_SLOT of a plaintext, if it has one. */
 function fillSignature(plaintext, signer, domain, h) {
   const at = plaintext.indexOf(utf8(HS_SLOT));
   if (at < 0) return plaintext;
-  const signature = utf8(signer.sign(domain, h).toString('base64'));
+  const signature = utf8(signer.sign(domain, authInput(h, plaintext)).toString('base64'));
   assert.equal(signature.length, HS_SLOT.length);
   const filled = Buffer.from(plaintext);
   signature.copy(filled, at);
@@ -437,7 +452,7 @@ test('a sender cannot present someone else as the author', () => {
 test('meta.hs must be the card identity key signature over this message handshake hash', () => {
   const plaintext = plaintextOf(metaJson(alice.card), utf8('signed'));
   const sealWith = overrides => rawSeal({ plaintext, chunkSizes: [plaintext.length], ...overrides });
-  const wrongSignature = because(/sender signature over the handshake does not verify/);
+  const wrongSignature = because(/sender signature over the handshake and content does not verify/);
   const malformed = because(/no well-formed sender signature/);
 
   // Control: Alice's own signature under the e2e-auth domain.
@@ -535,7 +550,7 @@ function kciForge({
   let plaintext = plaintextTemplate;
   const at = plaintextTemplate.indexOf(utf8(HS_SLOT));
   if (at >= 0) {
-    const signature = utf8(sign(h));
+    const signature = utf8(sign(authInput(h, plaintextTemplate)));
     assert.equal(signature.length, HS_SLOT.length);
     plaintext = Buffer.from(plaintextTemplate);
     signature.copy(plaintext, at);
@@ -560,7 +575,7 @@ test('a thief of the recipient e2e key cannot forge a message from another node 
   assert.equal(control.senderId, alice.nodeId);
   assert.deepEqual(control.content, utf8('forged'));
 
-  const wrongSignature = because(/sender signature over the handshake does not verify/);
+  const wrongSignature = because(/sender signature over the handshake and content does not verify/);
   // What the attacker can actually do: sign with keys it owns ...
   assert.throws(() => open(forge(metaJson(alice.card), signedBy(mallory))), wrongSignature);
   // ... reuse a signature Alice made in a genuine message to Bob that it captured (and can
@@ -588,6 +603,94 @@ test('a thief of the recipient e2e key cannot forge a message from another node 
     sign: signedBy(alice),
   });
   assert.throws(() => open(withoutTheft), because(/failed authentication/));
+});
+
+/**
+ * The attack DESIGN.md 15.9 closes by signing the content: an attacker who holds the
+ * recipient's e2e PRIVATE key intercepts a genuine sealed message, completes the Noise_X
+ * handshake as the recipient would, derives the transport key, decrypts, applies `edit`
+ * to the plaintext (which must keep its length, since the length is in the handshake) and
+ * re-encrypts every record under that same key. The handshake message is passed through
+ * untouched, so the handshake hash, and with it the sender's signature over it, are the
+ * genuine ones.
+ */
+function substitute(body, edit, stolen = bob.e2eKeyPair) {
+  const records = parseBody(body);
+  const first = body.subarray(records[0].start + 2, records[0].end);
+  const handshake = new HandshakeState({
+    pattern: 'X',
+    initiator: false,
+    prologue: Buffer.concat([utf8('clawnet/1/e2e'), NUL, utf8(bob.nodeId), NUL, utf8(MESSAGE_ID)]),
+    s: stolen,
+  });
+  handshake.readMessage(first);
+  const { rx } = handshake.split();
+  const chunks = records.slice(1).map(r => rx.decryptWithAd(EMPTY, body.subarray(r.start + 2, r.end)));
+  const plaintext = Buffer.concat(chunks);
+  const edited = edit(Buffer.from(plaintext));
+  assert.equal(edited.length, plaintext.length);
+  // The same key and the same nonces the sender used: the attacker's records are exactly
+  // what the sender would have produced for the edited plaintext.
+  rx.setNonce(0n);
+  const parts = [body.subarray(0, records[0].end)];
+  let offset = 0;
+  for (const chunk of chunks) {
+    const record = rx.encryptWithAd(EMPTY, edited.subarray(offset, offset + chunk.length));
+    parts.push(u16(record.length), record);
+    offset += chunk.length;
+  }
+  return Buffer.concat(parts);
+}
+
+test('a thief of the recipient e2e key cannot substitute the content of a genuine message (DESIGN.md 15.9)', () => {
+  const content = utf8('pay 10 coins to carol');
+  const genuine = seal({ content });
+
+  // Control: re-encrypting the unchanged plaintext yields a body that opens, so the
+  // attacker's pipeline is exact and only the signature can stop an edit.
+  const unchanged = open(substitute(genuine, plaintext => plaintext));
+  assert.equal(unchanged.senderId, alice.nodeId);
+  assert.deepEqual(unchanged.content, content);
+
+  const rejected = because(/sender signature over the handshake and content does not verify/);
+  // Same length, different content, the sender's genuine signature kept.
+  const swapped = substitute(genuine, plaintext => {
+    const at = plaintext.lastIndexOf(content);
+    assert.ok(at > 0);
+    utf8('pay 99 coins to mally').copy(plaintext, at);
+    return plaintext;
+  });
+  assert.throws(() => open(swapped), rejected);
+  // One flipped content bit.
+  assert.throws(() => open(substitute(genuine, plaintext => {
+    plaintext[plaintext.length - 1] ^= 0x01;
+    return plaintext;
+  })), rejected);
+  // A change to the metadata outside `hs`: the kind, same length.
+  assert.throws(() => open(substitute(genuine, plaintext => {
+    const at = plaintext.indexOf(utf8('"kind":"msg"'));
+    assert.ok(at > 0);
+    utf8('"kind":"ack"').copy(plaintext, at);
+    return plaintext;
+  })), rejected);
+  // Moving the boundary between metadata and content (the meta length prefix) is caught
+  // too, even before the signature, because the metadata no longer parses.
+  assert.throws(() => open(substitute(genuine, plaintext => {
+    plaintext.writeUInt16BE(plaintext.readUInt16BE(0) - 1, 0);
+    return plaintext;
+  })), AUTH);
+
+  // A multi-record message: only the last record's plaintext is altered.
+  const large = randomBytes(150000);
+  const bigGenuine = seal({ content: large });
+  assert.ok(open(substitute(bigGenuine, plaintext => plaintext)).content.equals(large));
+  assert.throws(() => open(substitute(bigGenuine, plaintext => {
+    plaintext[plaintext.length - 5] ^= 0x80;
+    return plaintext;
+  })), rejected);
+
+  // Without the stolen key the attacker cannot even start: the handshake does not open.
+  assert.throws(() => substitute(genuine, plaintext => plaintext, mallory.e2eKeyPair), AUTH);
 });
 
 test('an authenticated sender still cannot bend the framing', () => {
