@@ -6,6 +6,8 @@ import {
   LwwDataset,
   MAX_INDEX,
   MAX_RANGES,
+  MAX_RECORD,
+  RECORD_OVERHEAD,
   SyncFault,
   isKey,
   recordHash,
@@ -1461,4 +1463,50 @@ test('log: syncKnows and syncSummary', () => {
   assert.equal(twin.syncSummary(), dataset.syncSummary());
   dataset.dropStream('s');
   assert.notEqual(twin.syncSummary(), dataset.syncSummary());
+});
+
+// ---------------------------------------------------------------------------------------
+// DESIGN.md 15.7: a record that cannot fit in a sync packet is refused when it is offered.
+// ---------------------------------------------------------------------------------------
+
+test('the largest record leaves room for the packet prefix, a batch header and a frame length', () => {
+  assert.equal(MAX_RECORD, 64 * 1024 - RECORD_OVERHEAD);
+  assert.equal(RECORD_OVERHEAD, 4 + 64 + 4);
+});
+
+test('lww: a record over MAX_RECORD is refused as too-large, before the check runs', () => {
+  const { dataset, calls } = lww();
+  const edge = kv('edge', 1, { pad: '' });
+  const baseSize = Buffer.byteLength(JSON.stringify(edge));
+  const atLimit = kv('edge', 1, { pad: 'x'.repeat(MAX_RECORD - baseSize) });
+  assert.equal(Buffer.byteLength(JSON.stringify(atLimit)), MAX_RECORD);
+  assert.deepEqual(dataset.offer(atLimit), { accepted: true, isNew: true });
+
+  const over = kv('over', 1, { pad: 'x'.repeat(MAX_RECORD - baseSize + 1) });
+  const checksBefore = calls.check;
+  assert.deepEqual(dataset.offer(over), { accepted: false, reason: 'too-large', invalid: true });
+  assert.equal(calls.check, checksBefore, 'no signature work for a record that cannot be passed on');
+  assert.equal(dataset.has('over'), false);
+
+  // An oversize replacement of a held key, at a higher version or at an equal one.
+  const newer = kv('edge', 2, { pad: 'x'.repeat(MAX_RECORD) });
+  assert.equal(dataset.offer(newer).reason, 'too-large');
+  const tie = kv('edge', 1, { pad: 'y'.repeat(MAX_RECORD) });
+  assert.equal(dataset.offer(tie).reason, 'too-large');
+  assert.deepEqual(dataset.get('edge'), atLimit);
+  // Old news is still old news, whatever its size.
+  assert.equal(dataset.offer(kv('edge', 0, { pad: 'z'.repeat(MAX_RECORD) })).reason, 'stale');
+});
+
+test('log: a record over MAX_RECORD is refused as too-large, before the check runs', () => {
+  const { dataset, calls } = log();
+  const baseSize = Buffer.byteLength(JSON.stringify(entry('s', 1, { pad: '' })));
+  const atLimit = entry('s', 1, { pad: 'x'.repeat(MAX_RECORD - baseSize) });
+  assert.deepEqual(dataset.offer(atLimit), { accepted: true, isNew: true });
+  const checksBefore = calls.check;
+  const over = entry('s', 2, { pad: 'x'.repeat(MAX_RECORD - baseSize + 1) });
+  assert.deepEqual(dataset.offer(over), { accepted: false, reason: 'too-large', invalid: true });
+  assert.equal(calls.check, checksBefore);
+  assert.equal(dataset.get('s', 2), undefined);
+  assert.equal(dataset.size, 1);
 });

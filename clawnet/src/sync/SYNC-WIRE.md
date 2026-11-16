@@ -2,7 +2,7 @@
 
 Wire-level reference for the four ClawSync packet types of protocol `clawnet/1`:
 `GOSSIP` (16), `SYNC_DIGEST` (17), `SYNC_REQUEST` (18) and `SYNC_DELTA` (19). It
-implements DESIGN.md section 9 with the changes of section 15 (items 14, 17, 19 and 20)
+implements DESIGN.md section 9 with the changes of section 15 (items 7, 14, 17, 19 and 20)
 and is meant to be folded into `PROTOCOL.md`. The code is `src/sync/antientropy.js`
 (packets, rounds) and `src/sync/datasets.js` (digests, cursors, summaries).
 
@@ -28,7 +28,8 @@ without the space (`^[\x21-\x7e]{1,128}$`). Keys are ordered by byte value. The
 restriction to ASCII is what makes that order the same in every implementation.
 
 **Record.** A signed record (DESIGN.md section 3): a JSON object. On the wire a record is
-its canonical JSON encoding (`src/core/wire/canonical.js`), at most `MAX_RECORD` bytes.
+its canonical JSON encoding (`src/core/wire/canonical.js`), at most `MAX_RECORD` bytes (65464:
+see "Packet size" below).
 A receiver parses it with the strict canonical parser, so a record has exactly one
 encoding and a relay re-emits the bytes it received.
 
@@ -55,13 +56,45 @@ end, or bytes after the last frame are violations.
 | Name | Value | Meaning |
 | --- | --- | --- |
 | `MAX_ITEMS` | 1024 | records per batch, entries per digest page, items per request |
-| `MAX_RECORD` | 65536 | bytes of one record |
-| `MAX_BODY` | 1040380 | bytes of a body: `MAX_PACKET - 4 - MAX_HEADER` |
+| `MAX_RECORD` | 65464 | bytes of one record: `MAX_SYNC_PACKET - 72` |
+| `MAX_SYNC_PACKET` | 65536 | bytes of the largest packet a node sends (`Limits.MAX_SYNC_PACKET`), counted as `encodePacket` counts it: prefix, header and body |
+| `MAX_BODY` | 1040380 | bytes of a body a receiver accepts: `Limits.MAX_PACKET - 4 - MAX_HEADER` |
 | `MAX_RANGES` | 32 | out-of-order ranges in one log digest entry of a page |
 
-These are what a receiver accepts. A sender may use smaller batches (the engine's
-`limits.maxRecordsPerPacket`, default 256, and `limits.maxBytesPerPacket`, default
-262144, which is never below `MAX_RECORD + 4` so that any record fits in a batch).
+`MAX_ITEMS`, `MAX_RECORD` and `MAX_BODY` are what a receiver accepts. A sender is stricter,
+as the next section says.
+
+**Packet size** (DESIGN.md section 15, item 7). No `GOSSIP`, `SYNC_DIGEST`, `SYNC_REQUEST`
+or `SYNC_DELTA` packet that a node sends is larger than `MAX_SYNC_PACKET` (64 KiB), so a
+sync packet never holds a slow link for long and control traffic is not delayed behind
+one. The engine's `limits.maxBytesPerPacket` is this limit: it defaults to
+`MAX_SYNC_PACKET`, may be lowered to 8192 and not raised. The engine builds every packet
+within it:
+
+- a record batch holds as many records as fit in `maxBytesPerPacket - 4 - 64` bytes of
+  frames (4 for the packet prefix, 64 for the header, whose longest form,
+  `{"n":1024,"set":"<32 characters>"}`, is 51 bytes), and at most `limits.maxRecordsPerPacket`
+  (default 256);
+- a digest page or a request list holds as many entries as fit in
+  `maxBytesPerPacket - 4 - 1024` bytes of body (1024 allows for the longest header);
+- it checks the size of the packet it has built before it sends it, and does not send one
+  over the limit (counted as `oversize`; this is a safeguard and is never expected).
+
+A record is **too large** if its canonical form is longer than the packet can carry beside
+the longest batch header and its own frame length: `MAX_RECORD = MAX_SYNC_PACKET - 4 - 64 - 4
+= 65464` bytes, or `maxBytesPerPacket - 72` for an engine configured with a smaller packet.
+A record that cannot be sent is not accepted anywhere:
+
+| Where | What happens |
+| --- | --- |
+| `publish()` | refused: `{ accepted: false, reason: "too-large" }`; nothing is stored or sent |
+| `offer()` of either dataset | refused as invalid with reason `"too-large"` (after the cheap tests, before any signature check) |
+| received, frame longer than `MAX_RECORD` | violation `bad-body` |
+| received, frame longer than this node's own limit but within `MAX_RECORD` | dropped unread and counted (`tooLarge`); not stored, not forwarded, not a violation, because the peer may be configured with a larger packet |
+
+Owners of datasets must therefore keep their records within `MAX_RECORD`; none of the
+records of ClawNet comes near it (a cast body is limited to 16 KiB, a peer record holds at
+most 16 addresses, an LSA at most 256 links).
 
 **Cursor.** A position in a dataset's total order. Everything at or before a cursor has
 been dealt with.
@@ -405,7 +438,7 @@ The reason strings are stable; they are safe to log and to send in a `BYE`.
 | Reason | Raised for |
 | --- | --- |
 | `bad-header` | missing, unknown or malformed header field; `n` out of range; malformed dataset name; `round < 1`; a summary whose `sum` is not 64 lowercase hex characters, or that also carries `after`, `upto` or `hint`; a `stop` with a continuation or a request; an answer to a summary that carries a continuation or a request; `stop: "same"` in answer to a page; unknown `stop` value |
-| `bad-body` | no body, body over `MAX_BODY`, record batch that does not hold exactly `n` frames, frame length outside `2..MAX_RECORD` |
+| `bad-body` | no body, body over `MAX_BODY`, record batch that does not hold exactly `n` frames, frame length outside `2..MAX_RECORD` (a record too large to fit in a sync packet) |
 | `bad-record` | a record that is not canonical JSON |
 | `invalid-record` | a record that is not an object, has a malformed key, version, stream or index, or fails the dataset's validation (bad signature, wrong type, ...) |
 | `bad-digest` | digest body that is not a canonical JSON list, has more than `MAX_ITEMS` entries, a malformed entry (an LWW record entry without a 16-hex-character hash, a log entry with more than `MAX_RANGES` ranges or a `top` not above its last range), entries out of order or outside the page; a summary whose body is not `[]` |
@@ -430,7 +463,7 @@ local clock); such records are dropped without a report.
   digest, one cursor per dataset and a new-key budget. Hold-downs hold at most one
   waiting record per key of their dataset. Stored data is bounded by the datasets' own
   limits and admitted only after validation.
-- **Bandwidth.** Each packet received triggers at most two packets in reply. As
+- **Bandwidth.** No packet is larger than `MAX_SYNC_PACKET`. Each packet received triggers at most two packets in reply. As
   responder a node sends each of its records at most once per round and serves at most
   one round per peer per `minRoundIntervalMs`. As initiator it sends each record at most
   once per round, only on request and only what it advertised, and at most

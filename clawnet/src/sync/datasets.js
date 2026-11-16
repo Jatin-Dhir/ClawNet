@@ -43,6 +43,8 @@
 import { sha256 } from '../core/crypto/primitives.js';
 import { CanonicalError, ConfigError, ProtocolError, StateError } from '../core/errors.js';
 import { canonicalBytes } from '../core/wire/canonical.js';
+import { PACKET_PREFIX_BYTES } from '../core/wire/codec.js';
+import { Limits } from '../core/wire/types.js';
 
 /** Dataset names: lowercase, 1..32 characters. They travel in every sync packet header. */
 export const SET_NAME_PATTERN = /^[a-z][a-z0-9-]{0,31}$/;
@@ -57,6 +59,21 @@ export const DIGEST_HASH_CHARS = 16;
 const DIGEST_HASH_PATTERN = /^[0-9a-f]{16}$/;
 
 /**
+ * Bytes a one-record batch adds around the record: the packet prefix, a header allowance
+ * and the `u32be` length of the record's frame. The header of a record batch is
+ * `{"n":<=1024,"set":"<=32 characters"}`, which is at most 51 bytes; 64 leaves room.
+ */
+export const RECORD_OVERHEAD = PACKET_PREFIX_BYTES + 64 + 4;
+
+/**
+ * Largest record, as canonical JSON bytes, that fits in one sync packet of
+ * Limits.MAX_SYNC_PACKET bytes (DESIGN.md section 15, item 7). A larger record could
+ * never be gossiped or served in a round, so `offer()` refuses it ("too-large") instead
+ * of storing something this node cannot pass on.
+ */
+export const MAX_RECORD = Limits.MAX_SYNC_PACKET - RECORD_OVERHEAD;
+
+/**
  * SHA-256 of a record's canonical JSON form, as lowercase hex. This is the tie-break of
  * the total order of LWW records and what digests abbreviate.
  *
@@ -67,6 +84,39 @@ const DIGEST_HASH_PATTERN = /^[0-9a-f]{16}$/;
 export function recordHash(record) {
   try {
     return sha256(canonicalBytes(record)).toString('hex');
+  } catch (err) {
+    if (err instanceof CanonicalError) return null;
+    throw err;
+  }
+}
+
+/**
+ * Hash and encoded size of a record in one serialisation.
+ *
+ * @param {unknown} record
+ * @returns {{ hash: string, size: number } | null} null if the record is not
+ *   canonical-JSON data
+ */
+function measure(record) {
+  try {
+    const bytes = canonicalBytes(record);
+    return { hash: sha256(bytes).toString('hex'), size: bytes.length };
+  } catch (err) {
+    if (err instanceof CanonicalError) return null;
+    throw err;
+  }
+}
+
+/**
+ * Canonical JSON size of a record. A log record need not be canonical-JSON data to be
+ * stored (the engine skips what it cannot encode), so that case is `null`, not an error.
+ *
+ * @param {unknown} record
+ * @returns {number | null}
+ */
+function encodedSize(record) {
+  try {
+    return canonicalBytes(record).length;
   } catch (err) {
     if (err instanceof CanonicalError) return null;
     throw err;
@@ -114,8 +164,9 @@ export class SyncFault extends ProtocolError {
  *   came from a peer and lies at or above the newest index we knew there; our counter
  *   for that stream must move past it (DESIGN.md section 15, item 16)
  * @property {string} [reason]   why it was not stored: "duplicate", "stale", "removed",
- *   "full", "pruned", "streams-full", "malformed", "bad-key", "bad-version", "bad-stream",
- *   "bad-index", "check-threw", or the reason `check` gave
+ *   "full", "pruned", "streams-full", "malformed", "too-large" (more than MAX_RECORD
+ *   bytes), "bad-key", "bad-version", "bad-stream", "bad-index", "check-threw", or the
+ *   reason `check` gave
  * @property {boolean} [invalid] the record is malformed or failed `check`: a correct peer
  *   would not have relayed it
  */
@@ -260,25 +311,29 @@ export class LwwDataset {
     const { key, version } = head;
 
     const current = this.#held.get(key);
-    let hash = null;
+    let measured = null;
     if (current !== undefined) {
       if (version < current.version) return ignored('stale');
       if (version === current.version) {
-        hash = recordHash(record);
-        if (hash === null) return invalid('malformed');
-        if (hash === current.hash) return ignored('duplicate');
+        measured = measure(record);
+        if (measured === null) return invalid('malformed');
+        if (measured.hash === current.hash) return ignored('duplicate');
         // A loser once the equivocation is known costs no further check.
-        if (hash < current.hash && current.equivocated) return ignored('stale');
+        if (measured.hash < current.hash && current.equivocated) return ignored('stale');
       }
     } else {
       const floor = this.#floors.get(key);
       if (floor !== undefined && version <= floor) return ignored('removed');
       if (!this.#admits(key, version)) return ignored('full');
     }
-    if (hash === null) {
-      hash = recordHash(record);
-      if (hash === null) return invalid('malformed');
+    if (measured === null) {
+      measured = measure(record);
+      if (measured === null) return invalid('malformed');
     }
+    // After the cheap tests and before the signature: a record that cannot be passed on
+    // is not worth verifying, and a correct peer never relays one.
+    if (measured.size > MAX_RECORD) return invalid('too-large');
+    const { hash } = measured;
 
     const verdict = runCheck(this.#check, record);
     if (!verdict.ok) return verdict.soft ? ignored(verdict.reason) : invalid(verdict.reason);
@@ -930,6 +985,9 @@ export class LogDataset {
       victim = this.#streamVictim(stream);
       if (victim === null) return ignored('streams-full');
     }
+
+    const size = encodedSize(record);
+    if (size !== null && size > MAX_RECORD) return invalid('too-large');
 
     const verdict = runCheck(this.#check, record);
     if (!verdict.ok) return verdict.soft ? ignored(verdict.reason) : invalid(verdict.reason);

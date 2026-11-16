@@ -476,7 +476,7 @@ test('a partition with divergent writes on both sides heals to full convergence'
 test('a full resync of thousands of records is paginated under the packet limits', t => {
   const limits = {
     maxRecordsPerPacket: 50,
-    maxBytesPerPacket: SyncWire.MAX_RECORD + 4,
+    maxBytesPerPacket: Limits.MAX_SYNC_PACKET,
     maxPendingPerPeer: 100,
   };
   const net = new SimNet({ seed: 9, datasets: () => [kvSet(), castSet()], engine: { limits } });
@@ -500,7 +500,8 @@ test('a full resync of thousands of records is paginated under the packet limits
   net.tap(({ packet }) => {
     seen[packet.type] += 1;
     largestBody = Math.max(largestBody, packet.body.length);
-    assert.ok(packet.body.length <= limits.maxBytesPerPacket, `${typeName(packet.type)} body too large`);
+    const wireSize = encodePacket(packet).length;
+    assert.ok(wireSize <= limits.maxBytesPerPacket, `${typeName(packet.type)} is ${wireSize} bytes`);
     if (packet.type === PacketType.SYNC_DELTA) {
       assert.ok(packet.header.n <= limits.maxRecordsPerPacket);
       largestBatch = Math.max(largestBatch, packet.header.n);
@@ -531,7 +532,8 @@ test('a full resync of thousands of records is paginated under the packet limits
   assert.equal(largestBatch, 50);
   assert.ok(seen[PacketType.SYNC_DELTA] >= Math.ceil(6340 / 50), `only ${seen[PacketType.SYNC_DELTA]} deltas`);
   assert.equal(seen[PacketType.SYNC_DIGEST], seen[PacketType.SYNC_REQUEST], 'stop-and-wait');
-  // The big records forced byte-limited batches of three (3 * 20 KiB < 64 KiB < 4 * 20 KiB).
+  // The big records forced byte-limited batches of three (3 * 20 KiB < 64 KiB < 4 * 20 KiB),
+  // and no packet, header included, went over the limit (checked in the tap above).
   assert.ok(largestBody > 60_000, `largest body was ${largestBody}`);
 
   const big = alice.kv('big7', 1, 'x'.repeat(20_000));
@@ -1180,8 +1182,10 @@ test('constructor rejects missing and out-of-range options', () => {
     { limits: null },
     { limits: { maxRecordsPerPacket: 0 } },
     { limits: { maxRecordsPerPacket: SyncWire.MAX_ITEMS + 1 } },
-    { limits: { maxBytesPerPacket: SyncWire.MAX_RECORD + 3 } },
-    { limits: { maxBytesPerPacket: SyncWire.MAX_BODY + 1 } },
+    { limits: { maxBytesPerPacket: SyncWire.MIN_PACKET - 1 } },
+    { limits: { maxBytesPerPacket: SyncWire.MAX_PACKET + 1 } },
+    { limits: { maxBytesPerPacket: SyncWire.MAX_BODY } },
+    { limits: { maxBytesPerPacket: 100_000.5 } },
     { limits: { maxPendingPerPeer: 0 } },
     { limits: { maxPendingPerPeer: 1.5 } },
     { gossipBatchMs: -1 },
@@ -1207,12 +1211,22 @@ test('constructor rejects missing and out-of-range options', () => {
     () =>
       new SyncEngine({
         ...good(),
-        limits: { maxRecordsPerPacket: SyncWire.MAX_ITEMS, maxBytesPerPacket: SyncWire.MAX_BODY },
+        limits: { maxRecordsPerPacket: SyncWire.MAX_ITEMS, maxBytesPerPacket: SyncWire.MAX_PACKET },
       }),
   );
-  // Whatever the limits, a full packet fits the protocol's packet limit.
+  assert.doesNotThrow(
+    () => new SyncEngine({ ...good(), limits: { maxBytesPerPacket: SyncWire.MIN_PACKET } }),
+  );
+  // The receiver's bound stays what DESIGN.md 15.7 calls the parser's hard bound ...
   assert.ok(4 + Limits.MAX_HEADER + SyncWire.MAX_BODY <= Limits.MAX_PACKET);
-  assert.ok(DEFAULT_SYNC_LIMITS.maxBytesPerPacket >= SyncWire.MAX_RECORD + 4);
+  // ... while the engine sends 64 KiB at most, by default and by configuration.
+  assert.equal(DEFAULT_SYNC_LIMITS.maxBytesPerPacket, Limits.MAX_SYNC_PACKET);
+  assert.equal(SyncWire.MAX_PACKET, Limits.MAX_SYNC_PACKET);
+  // A record of MAX_RECORD bytes, alone in a batch with the longest header, fills a
+  // packet exactly.
+  const longest = { n: SyncWire.MAX_ITEMS, set: 'x'.repeat(32) };
+  assert.ok(canonicalBytes(longest).length <= 64);
+  assert.equal(4 + 64 + 4 + SyncWire.MAX_RECORD, Limits.MAX_SYNC_PACKET);
 });
 
 test('publish validates, stores and queues; it refuses what cannot travel', () => {
@@ -1227,6 +1241,7 @@ test('publish validates, stores and queues; it refuses what cannot travel', () =
   });
   const huge = alice.kv('huge', 1, 'x'.repeat(SyncWire.MAX_RECORD));
   assert.deepEqual(h.engine.publish('kv', huge), { accepted: false, reason: 'too-large' });
+  assert.equal(h.kv.size, 0);
   assert.deepEqual(h.engine.publish('kv', { ...alice.kv('a', 1), sig: 'AAAA' }), {
     accepted: false,
     reason: 'bad-signature',
@@ -1537,7 +1552,12 @@ test('records stored behind the engine that cannot travel are skipped, not sent'
   const h = harness({ kv: lenient, cast: lenientLog });
   // An LWW record must be canonical-JSON data (its hash orders it); a log record need not.
   assert.equal(lenient.offer({ k: 'float', v: 1, value: 1.5 }).accepted, false);
-  lenient.offer({ k: 'huge', v: 1, value: 'x'.repeat(SyncWire.MAX_RECORD) });
+  // The datasets themselves refuse what could never be sent (DESIGN.md 15.7).
+  assert.deepEqual(lenient.offer({ k: 'huge', v: 1, value: 'x'.repeat(SyncWire.MAX_RECORD) }), {
+    accepted: false,
+    reason: 'too-large',
+    invalid: true,
+  });
   lenient.offer({ k: 'ok', v: 1 });
   lenientLog.offer({ s: 's', n: 1, value: 1.5 });
   lenientLog.offer({ s: 's', n: 2 });
@@ -1551,7 +1571,7 @@ test('records stored behind the engine that cannot travel are skipped, not sent'
   assert.deepEqual(recordsOf(out[0]), [{ k: 'ok', v: 1 }]);
   assert.deepEqual(recordsOf(out[2]), [{ s: 's', n: 2 }]);
   assert.equal(out[1].header.next, null);
-  assert.equal(h.engine.stats().unsendable, 2);
+  assert.equal(h.engine.stats().unsendable, 1);
   assert.deepEqual(h.faults, []);
 });
 
@@ -1977,4 +1997,126 @@ test('15.14: two valid records with one version converge on the greater hash eve
   for (const node of net.nodes()) assert.deepEqual(node.sets.kv.get(kvKey(one)), winner, node.id);
   assert.ok(net.agree('kv'));
   assert.deepEqual(net.nodes().flatMap(node => node.faults), []);
+});
+
+// ---------------------------------------------------------------------------------------
+// DESIGN.md 15.7: sync packets stay within Limits.MAX_SYNC_PACKET.
+// ---------------------------------------------------------------------------------------
+
+/** A kv record whose canonical form is exactly `size` bytes. */
+function kvOfSize(author, name, seq, size) {
+  const probe = canonicalBytes(author.kv(name, seq, '')).length;
+  const record = author.kv(name, seq, 'x'.repeat(size - probe));
+  assert.equal(canonicalBytes(record).length, size);
+  return record;
+}
+
+test('a record of exactly the largest size travels in one packet within the limit', () => {
+  const h = harness();
+  h.engine.addPeer('p1');
+  h.take();
+  const edge = kvOfSize(alice, 'edge', 1, SyncWire.MAX_RECORD);
+  assert.deepEqual(h.engine.publish('kv', edge), { accepted: true });
+  h.engine.flush();
+  const [packet] = h.take();
+  assert.equal(packet.type, PacketType.GOSSIP);
+  assert.deepEqual(recordsOf(packet), [edge]);
+  // The batch header is 18 bytes here, well inside the 64 reserved for the longest.
+  const wireSize = encodePacket(packet).length;
+  assert.ok(wireSize <= Limits.MAX_SYNC_PACKET && wireSize > Limits.MAX_SYNC_PACKET - 64);
+  assert.equal(h.engine.stats().oversize, 0);
+
+  const over = kvOfSize(alice, 'over', 1, SyncWire.MAX_RECORD + 1);
+  assert.deepEqual(h.engine.publish('kv', over), { accepted: false, reason: 'too-large' });
+  assert.equal(h.kv.has(kvKey(over)), false);
+});
+
+test('a packet-size limit lower than the default drops what does not fit, and sends nothing larger', () => {
+  const limit = 16 * 1024;
+  const small = harness({ limits: { ...DEFAULT_SYNC_LIMITS, maxBytesPerPacket: limit } });
+  small.engine.addPeer('p1');
+  small.take();
+
+  const fits = kvOfSize(alice, 'fits', 1, limit - 72);
+  const tooBig = kvOfSize(alice, 'big', 1, limit - 71);
+  assert.deepEqual(small.engine.publish('kv', tooBig), { accepted: false, reason: 'too-large' });
+  assert.deepEqual(small.engine.publish('kv', fits), { accepted: true });
+  small.engine.flush();
+  const sentSize = encodePacket(small.take()[0]).length;
+  assert.ok(sentSize <= limit && sentSize > limit - 72);
+
+  // A peer with a larger packet size relays a record to us that we could not pass on:
+  // not stored, not forwarded, not reported.
+  const large = kvOfSize(bob, 'large', 1, limit);
+  small.engine.addPeer('p2');
+  small.take();
+  small.engine.handlePacket('p1', gossip('kv', [large]));
+  assert.equal(small.kv.has(kvKey(large)), false);
+  assert.equal(small.engine.stats().tooLarge, 1);
+  assert.deepEqual(small.faults, []);
+  small.engine.flush();
+  assert.deepEqual(small.take(), []);
+});
+
+test('no packet exceeds the limit while large records are gossiped and synchronised', t => {
+  const net = new SimNet({ seed: 21, datasets: () => [kvSet(), castSet()] });
+  t.after(() => net.close());
+  const a = net.addNode('a');
+  const b = net.addNode('b');
+  const c = net.addNode('c');
+  let largest = 0;
+  let count = 0;
+  net.tap(({ packet }) => {
+    const size = encodePacket(packet).length;
+    largest = Math.max(largest, size);
+    count += 1;
+    assert.ok(size <= Limits.MAX_SYNC_PACKET, `${typeName(packet.type)} is ${size} bytes`);
+  });
+  net.link('a', 'b');
+  net.link('b', 'c');
+  net.run();
+  // Records of 20 to 60 KiB: one or two to a packet, and never more than fits.
+  for (let i = 0; i < 12; i += 1) {
+    const size = 20_000 + ((i * 3_700) % 40_000);
+    assert.equal(a.engine.publish('kv', kvOfSize(alice, `big${i}`, 1, size)).accepted, true);
+  }
+  for (let i = 0; i < 40; i += 1) assert.equal(c.engine.publish('kv', alice.kv(`c${i}`, 1, 'y'.repeat(9_000))).accepted, true);
+  net.run();
+  net.rounds(3);
+  assert.ok(net.agree('kv'));
+  assert.equal(a.sets.kv.size, 52);
+  assert.equal(b.sets.kv.size, 52);
+  assert.ok(count > 0 && largest > 40_000, 'the scenario did send big packets');
+  assert.equal(a.engine.stats().oversize + b.engine.stats().oversize + c.engine.stats().oversize, 0);
+});
+
+test('digest pages and request lists respect the limit even for heavily fragmented streams', () => {
+  const limit = SyncWire.MIN_PACKET;
+  const cast = castSet();
+  // 60 streams with the longest allowed id, each holding 40 isolated indices: every
+  // digest entry lists the maximum number of ranges.
+  for (let s = 0; s < 60; s += 1) {
+    const chan = `${String(s).padStart(3, '0')}${'"'.repeat(60)}`;
+    for (let n = 1; n <= 80; n += 2) {
+      const record = alice.cast(chan, n);
+      assert.equal(cast.offer(record).accepted, true);
+    }
+  }
+  const h = harness({ cast, limits: { ...DEFAULT_SYNC_LIMITS, maxBytesPerPacket: limit } });
+  h.engine.addPeer('p1');
+  // Walk the whole round against a peer that wants nothing and check every packet.
+  let pages = 0;
+  let out = h.take();
+  for (;;) {
+    for (const packet of out) assert.ok(encodePacket(packet).length <= limit);
+    const sent = out.find(p => p.type === PacketType.SYNC_DIGEST);
+    if (sent === undefined) break;
+    const isSummary = sent.header.sum !== undefined;
+    if (!isSummary && sent.header.set === 'cast') pages += 1;
+    h.engine.handlePacket('p1', request(sent.header.set, sent.header.round, []));
+    out = h.take();
+  }
+  assert.ok(pages > 1, 'the cast dataset needed several pages');
+  assert.equal(h.engine.stats().oversize, 0);
+  assert.deepEqual(h.faults, []);
 });

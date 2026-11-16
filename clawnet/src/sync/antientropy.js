@@ -45,25 +45,44 @@
 
 import { CanonicalError, ConfigError, StateError, WireError } from '../core/errors.js';
 import { canonicalBytes, parseCanonical } from '../core/wire/canonical.js';
+import { PACKET_PREFIX_BYTES } from '../core/wire/codec.js';
 import { Limits, PacketType } from '../core/wire/types.js';
-import { SET_NAME_PATTERN, SyncFault } from './datasets.js';
+import { MAX_RECORD, RECORD_OVERHEAD, SET_NAME_PATTERN, SyncFault } from './datasets.js';
 
 /** Wire limits of the sync packets. Changing a value changes the protocol. */
 export const SyncWire = Object.freeze({
   /** Most records in a GOSSIP or SYNC_DELTA, entries in a SYNC_DIGEST, items in a SYNC_REQUEST. */
   MAX_ITEMS: 1024,
-  /** Largest record, as canonical JSON bytes. */
-  MAX_RECORD: 64 * 1024,
-  /** Largest body: what is left of a packet after the fixed prefix and a full header. */
+  /**
+   * Largest record, as canonical JSON bytes: what is left of a Limits.MAX_SYNC_PACKET
+   * packet after the packet prefix, the longest batch header and the frame length
+   * (DESIGN.md section 15, item 7). A record over it is never sent and never accepted.
+   */
+  MAX_RECORD,
+  /** Largest body a receiver accepts: what is left of a packet after the fixed prefix and a full header. */
   MAX_BODY: Limits.MAX_PACKET - 4 - Limits.MAX_HEADER,
+  /** Largest packet this engine sends, prefix and header included: Limits.MAX_SYNC_PACKET. */
+  MAX_PACKET: Limits.MAX_SYNC_PACKET,
+  /**
+   * Smallest `limits.maxBytesPerPacket`: room for a digest entry of a heavily fragmented
+   * log stream (about 2 KiB) and the longest digest or request header.
+   */
+  MIN_PACKET: 8 * 1024,
 });
 
 /** Limits used when the constructor is not given others. */
 export const DEFAULT_SYNC_LIMITS = Object.freeze({
   maxRecordsPerPacket: 256,
-  maxBytesPerPacket: 256 * 1024,
+  maxBytesPerPacket: Limits.MAX_SYNC_PACKET,
   maxPendingPerPeer: 4096,
 });
+
+/**
+ * Room reserved for the header of a digest page or a request. The longest is a digest
+ * page with two cursors of 128 characters that all need escaping, a hint and a round
+ * number, which is under 800 bytes.
+ */
+const LIST_HEADER_ALLOWANCE = 1024;
 
 /** Length prefix of one record in a batch body. */
 const FRAME_PREFIX = 4;
@@ -103,6 +122,9 @@ const DATASET_METHODS = [
 
 /**
  * Encode records as a batch body: `u32be length || canonical JSON` per record.
+ *
+ * This enforces what a receiver accepts (SyncWire.MAX_BODY); the engine sends smaller
+ * packets, within its `limits.maxBytesPerPacket`.
  *
  * @param {object[]} records  1..SyncWire.MAX_ITEMS records
  * @returns {Buffer}
@@ -155,6 +177,12 @@ export class SyncEngine {
   #now;
   #rng;
   #limits;
+  /** Largest record that fits a packet of `maxBytesPerPacket`. */
+  #maxRecord;
+  /** Bytes of record frames a batch may hold. */
+  #batchBytes;
+  /** Bytes of body a digest page or request list may use. */
+  #listBytes;
   #gossipBatchMs;
   #schedule;
   #onError;
@@ -204,8 +232,11 @@ export class SyncEngine {
    * @param {number} [options.limits.maxRecordsPerPacket]  most records per GOSSIP or
    *   SYNC_DELTA, entries per digest page and items per request we send;
    *   1..SyncWire.MAX_ITEMS
-   * @param {number} [options.limits.maxBytesPerPacket]  largest packet body we send, in
-   *   bytes; SyncWire.MAX_RECORD + 4 .. SyncWire.MAX_BODY, so that any record fits
+   * @param {number} [options.limits.maxBytesPerPacket]  largest packet we send, in bytes,
+   *   counted as encodePacket() counts it: the 4-byte prefix, the header and the body.
+   *   SyncWire.MIN_PACKET .. SyncWire.MAX_PACKET (the default, Limits.MAX_SYNC_PACKET). A
+   *   record that does not fit in a packet of this size is refused by publish() and
+   *   dropped when received, so a packet never has to carry more than it can hold
    * @param {number} [options.limits.maxPendingPerPeer]  most records queued for gossip
    *   per peer between flushes; >= 1
    * @param {number} [options.gossipBatchMs=25]  how long gossip is batched, in
@@ -308,8 +339,8 @@ export class SyncEngine {
     requireInteger(
       merged.maxBytesPerPacket,
       'limits.maxBytesPerPacket',
-      SyncWire.MAX_RECORD + FRAME_PREFIX,
-      SyncWire.MAX_BODY,
+      SyncWire.MIN_PACKET,
+      SyncWire.MAX_PACKET,
     );
     const unbounded = Number.MAX_SAFE_INTEGER;
     requireInteger(merged.maxPendingPerPeer, 'limits.maxPendingPerPeer', 1, unbounded);
@@ -341,6 +372,12 @@ export class SyncEngine {
       maxBytesPerPacket: merged.maxBytesPerPacket,
       maxPendingPerPeer: merged.maxPendingPerPeer,
     });
+    // What fits in a packet of the configured size, by kind. A record batch pays for a
+    // short header and a frame length per record; a digest page or request for a longer
+    // header. RECORD_OVERHEAD is prefix + batch header allowance + one frame length.
+    this.#maxRecord = merged.maxBytesPerPacket - RECORD_OVERHEAD;
+    this.#batchBytes = this.#maxRecord + FRAME_PREFIX;
+    this.#listBytes = merged.maxBytesPerPacket - PACKET_PREFIX_BYTES - LIST_HEADER_ALLOWANCE;
     this.#gossipBatchMs = gossipBatchMs;
     this.#schedule = schedule;
     this.#onError = onError;
@@ -393,7 +430,8 @@ export class SyncEngine {
    * @param {object} record  a signed record; it goes through the dataset's `check` like
    *   any other, and must not be mutated afterwards
    * @returns {{ accepted: boolean, reason?: string }}  `reason` is the dataset's, or
-   *   "unencodable" (not canonical-JSON data) or "too-large" (over SyncWire.MAX_RECORD)
+   *   "unencodable" (not canonical-JSON data) or "too-large" (the record does not fit in
+   *   a packet of `limits.maxBytesPerPacket`, at most SyncWire.MAX_RECORD bytes)
    * @throws {StateError} if no dataset has that name
    */
   publish(datasetName, record) {
@@ -407,7 +445,7 @@ export class SyncEngine {
       return { accepted: false, reason: 'unencodable' };
     }
     // Refused here rather than at send time, so everything published can travel.
-    if (bytes.length > SyncWire.MAX_RECORD) return { accepted: false, reason: 'too-large' };
+    if (bytes.length > this.#maxRecord) return { accepted: false, reason: 'too-large' };
 
     const result = dataset.offer(record);
     if (!result.accepted) return { accepted: false, reason: result.reason };
@@ -563,6 +601,13 @@ export class SyncEngine {
       return;
     }
     for (const frame of frames) {
+      // Valid on the wire, but this node could not pass it on in a packet of its own
+      // size, so it does not store it either. Not the peer's fault: it may be configured
+      // with a larger packet size.
+      if (frame.length > this.#maxRecord) {
+        this.#stats.tooLarge += 1;
+        continue;
+      }
       const record = parseRecord(frame);
       // Both decided before the dataset spends anything on the record.
       if (!this.#originAllowed(record)) {
@@ -678,7 +723,7 @@ export class SyncEngine {
         const size = JSON.stringify(step.want).length + 1;
         if (
           wants.length >= this.#limits.maxRecordsPerPacket ||
-          wantBytes + size > this.#limits.maxBytesPerPacket
+          wantBytes + size > this.#listBytes
         ) {
           complete = false;
           break;
@@ -866,7 +911,7 @@ export class SyncEngine {
     }
     const page = dataset.syncPage(lane.after, {
       maxEntries: lane.pageSize,
-      maxBytes: this.#limits.maxBytesPerPacket,
+      maxBytes: this.#listBytes,
     });
     const header = { after: page.after, round: lane.round, set: dataset.name, upto: page.upto };
     if (Object.keys(page.hint).length > 0) header.hint = page.hint;
@@ -1082,13 +1127,19 @@ export class SyncEngine {
   }
 
   #transmit(peer, packet) {
+    // The budgets above are what keeps packets small; this is the check that they did.
+    const size = PACKET_PREFIX_BYTES + canonicalBytes(packet.header).length + packet.body.length;
+    if (size > this.#limits.maxBytesPerPacket) {
+      this.#stats.oversize += 1;
+      return false;
+    }
     const sent = this.#send(peer.id, packet) === true;
     if (!sent) this.#stats.sendFailures += 1;
     return sent;
   }
 
   #batch() {
-    return new Batch(this.#limits.maxRecordsPerPacket, this.#limits.maxBytesPerPacket);
+    return new Batch(this.#limits.maxRecordsPerPacket, this.#batchBytes);
   }
 
   /** Canonical bytes of a stored record, or null if it cannot travel. */
@@ -1101,7 +1152,7 @@ export class SyncEngine {
       bytes = null;
     }
     // Only a record put into a dataset behind the engine's back can get here.
-    if (bytes === null || bytes.length > SyncWire.MAX_RECORD) {
+    if (bytes === null || bytes.length > this.#maxRecord) {
       this.#stats.unsendable += 1;
       return null;
     }
@@ -1194,6 +1245,10 @@ function newStats() {
     strayPackets: 0,
     /** stored records that could not be encoded or exceed the record limit */
     unsendable: 0,
+    /** received records dropped unread because they do not fit a packet of our size */
+    tooLarge: 0,
+    /** packets the engine built over its packet limit and did not send (never expected) */
+    oversize: 0,
     /** send() calls that returned false */
     sendFailures: 0,
     /** protocol violations reported through onError */
