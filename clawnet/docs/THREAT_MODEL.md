@@ -153,8 +153,11 @@ blocklisted), with a valid identity, which may run modified software.
   of them.
 - Create many identities (a Sybil attack). **Open networks have no defence against this**
   beyond the caps. Many identities linked to one attacker can fill the tables, occupy peer
-  slots, and consume the pending-offer slots of a file receiver (8 per peer, 64 in total) so
-  that a real offer gets `busy`.
+  slots, fill the cast stream table (streams of channels a node has joined outrank the
+  rest, so the table of a node only refuses new streams in channels it merely relays), and
+  consume the pending-offer slots of a file receiver (8 per peer, 64 in total) so that a
+  real offer gets `busy`. An unanswered offer is declined after 24 hours, so an attacker has
+  to keep offering to hold the slots; nothing yet frees a slot for an honest sender sooner.
 - Equivocate (publish two different records with one version) or clone another node's
   identity if it has stolen the keys. Both are detected and reported as events
   (`peer.equivocation`, `lsa.equivocation`, `discovery.clone_suspected`); neither is

@@ -728,7 +728,17 @@ export class SecureChannel {
     }
     this.#ending = true;
     this.#flush();
-    this.#closing = new Promise(resolve => {
+    this.#closing = this.#awaitStreamClose(lingerMs);
+    return this.#closing;
+  }
+
+  /**
+   * Resolve when the stream has closed, destroying it after `lingerMs` if the peer has not
+   * closed its side. Without the deadline a peer that never closes keeps the socket (and
+   * its file descriptor) for as long as it likes.
+   */
+  #awaitStreamClose(lingerMs) {
+    return new Promise(resolve => {
       const timer = setTimeout(() => {
         this.#stream.destroy();
         resolve();
@@ -740,7 +750,6 @@ export class SecureChannel {
       if (this.#streamClosed) done();
       else this.#streamClosedWaiters.push(done);
     });
-    return this.#closing;
   }
 
   #emitClose(info) {
@@ -949,6 +958,9 @@ export class SecureChannel {
       this.#queuedNormal = 0;
       this.#flush();
       this.#closing ??= Promise.resolve();
+      // The peer said goodbye and ended its side, but it may never close the socket: give
+      // it the usual linger and then destroy ours, as a local close does.
+      void this.#awaitStreamClose(DEFAULT_LINGER_MS);
       return;
     }
     try {

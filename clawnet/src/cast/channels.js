@@ -164,16 +164,22 @@ export function createCastService({ maxPerStream = 64, maxStreams = 1024, histor
     const rate = effectiveRate();
     if (rate < 1) return { reason: 'rate', retryInMs: RATE_WINDOW_MS };
     const top = dataset.topOf(stream);
-    if (top !== undefined && n > top + rate) return { reason: 'gap', retryInMs: Infinity };
-    const floor = dataset.floorOf(stream) ?? 0;
+    // Nothing held, so nothing to compare against: the record cannot be judged and is admitted.
+    if (top === undefined) return null;
+    if (n > top + rate) return { reason: 'gap', retryInMs: Infinity };
     let retryInMs = 0;
-    for (let j = 1, m = n - rate; m > floor; j += 1, m -= rate) {
-      const earlier = dataset.get(stream, m);
-      if (earlier !== undefined) retryInMs = Math.max(retryInMs, earlier.ts + j * RATE_WINDOW_MS - ts);
-    }
-    for (let j = 1, m = n + rate; m <= (top ?? 0); j += 1, m += rate) {
-      const later = dataset.get(stream, m);
-      if (later !== undefined && later.ts - ts < j * RATE_WINDOW_MS) retryInMs = Infinity;
+    // Walk the records held, at most one retention window of them, and not the counters
+    // between them and `n`: `n` is unverified input, and stepping from it would let one
+    // forged record with a huge counter keep this thread busy before its signature is read.
+    for (const held of dataset.range(stream, 1, Number.MAX_SAFE_INTEGER)) {
+      const distance = n - held.n;
+      if (distance === 0 || distance % rate !== 0) continue;
+      const steps = Math.abs(distance) / rate;
+      if (distance > 0) {
+        retryInMs = Math.max(retryInMs, held.ts + steps * RATE_WINDOW_MS - ts);
+      } else if (held.ts - ts < steps * RATE_WINDOW_MS) {
+        retryInMs = Infinity;
+      }
     }
     return retryInMs > 0 ? { reason: 'rate', retryInMs } : null;
   }
@@ -192,7 +198,7 @@ export function createCastService({ maxPerStream = 64, maxStreams = 1024, histor
     if (record.ts > at + limits.maxClockSkewMs) return { ok: false, reason: 'future', soft: true };
     if (record.ts < at - limits.messageLifetimeMs) return { ok: false, reason: 'expired', soft: true };
     const stream = streamOf(record);
-    if (dataset.topOf(stream) === undefined && (originStreams.get(record.origin)?.size ?? 0) >= MAX_STREAMS_PER_ORIGIN) {
+    if (dataset.topOf(stream) === undefined && openStreamsOf(record.origin) >= MAX_STREAMS_PER_ORIGIN) {
       counters.streamRejected += 1;
       reportRejected(record, 'streams');
       return { ok: false, reason: 'streams', soft: true };
@@ -200,11 +206,29 @@ export function createCastService({ maxPerStream = 64, maxStreams = 1024, histor
     return { ok: true };
   }
 
+  /**
+   * How many streams `origin` has open in the dataset. The side table can hold streams the
+   * dataset has since dropped (it evicts when full, and the sweep drops quiet ones), so
+   * the entry is trimmed against the dataset before it is counted.
+   */
+  function openStreamsOf(origin) {
+    const streams = originStreams.get(origin);
+    if (streams === undefined) return 0;
+    for (const stream of streams) if (dataset.topOf(stream) === undefined) streams.delete(stream);
+    if (streams.size === 0) originStreams.delete(origin);
+    return streams.size;
+  }
+
   function onAccept(record) {
     const stream = streamOf(record);
     let streams = originStreams.get(record.origin);
     if (streams === undefined) {
-      if (originStreams.size >= MAX_ORIGINS_REMEMBERED) return;
+      // Entries only outlive their streams until trimmed, so after a trim the table holds
+      // at most one origin per stream the dataset tracks and there is always room. The cap
+      // must never switch the per-origin limit off for an origin it stops tracking.
+      if (originStreams.size >= Math.max(MAX_ORIGINS_REMEMBERED, maxStreams)) {
+        for (const origin of [...originStreams.keys()]) openStreamsOf(origin);
+      }
       streams = new Set();
       originStreams.set(record.origin, streams);
     }
@@ -402,6 +426,7 @@ export function createCastService({ maxPerStream = 64, maxStreams = 1024, histor
       await doc.flush();
       channels.set(name, channel);
       byChan.set(chan, channel);
+      dataset.priorityChanged();
       counters.joined += 1;
       ctx.events.emit('cast.joined', { name, chan, encrypted: keyBytes !== null });
       backfill(channel);
@@ -418,6 +443,7 @@ export function createCastService({ maxPerStream = 64, maxStreams = 1024, histor
       await doc.flush();
       channels.delete(name);
       byChan.delete(channel.chan);
+      dataset.priorityChanged();
       for (const message of messages.get(channel.chan) ?? []) surfaced.delete(`${message.chan}:${message.origin}:${message.n}`);
       messages.delete(channel.chan);
       await historyLog.append({ op: 'del', chan: channel.chan });
@@ -658,6 +684,9 @@ export function createCastService({ maxPerStream = 64, maxStreams = 1024, histor
         onAccept,
         ownStream: (stream) => stream.endsWith(`:${selfId}`),
         onSelfNewer,
+        // A full table gives its slot to a stream of a channel this node joined over one of
+        // a channel it only relays, so junk streams cannot crowd out the ones in use.
+        priority: (stream) => (byChan.has(stream.slice(0, stream.indexOf(':'))) ? 2 : 1),
         maxPerStream,
         maxStreams,
       });

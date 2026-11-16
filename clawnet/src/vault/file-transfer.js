@@ -52,6 +52,13 @@ export const INITIAL_WINDOW = 4;
 /** Largest plaintext of one chunk that fits a routed packet (ARCHITECTURE.md 4.3 and config.js). */
 export const MAX_CHUNK_BYTES = Limits.MAX_ROUTED_PACKET - 16 * 1024;
 
+/**
+ * How long an incoming offer may wait for a decision before it is declined. It holds one of
+ * the few pending-offer slots, so a slot must not be held for the message lifetime by
+ * someone who will never be answered.
+ */
+export const DEFAULT_OFFER_TTL_MS = 24 * 3_600_000;
+
 /** The upper bound an offer's `chunk` may name (ARCHITECTURE.md 8.2). */
 export const MAX_OFFERED_CHUNK = 1032192;
 
@@ -245,14 +252,17 @@ function validTransfersDoc(value) {
  *   slot, over all peers; more are refused with `busy`
  * @param {number} [options.maxPendingPerPeer=8] the same, per peer
  * @param {number} [options.keep=200] finished transfers that stay listed
+ * @param {number} [options.offerTtlMs=DEFAULT_OFFER_TTL_MS] how long an incoming offer may
+ *   wait for a decision; after that it is declined as `denied`
  * @returns {object} a Service (ARCHITECTURE.md section 6); `api` offers `send`, `list`,
  *   `get`, `accept`, `reject` and `cancel`
  * @throws {ConfigError} if an option is not a positive integer
  */
-export function createFileTransferService({ maxActive = 8, maxPendingOffers = 64, maxPendingPerPeer = 8, keep = 200 } = {}) {
+export function createFileTransferService({ maxActive = 8, maxPendingOffers = 64, maxPendingPerPeer = 8, keep = 200, offerTtlMs = DEFAULT_OFFER_TTL_MS } = {}) {
   requireCount(maxActive, 'maxActive');
   requireCount(maxPendingOffers, 'maxPendingOffers');
   requireCount(maxPendingPerPeer, 'maxPendingPerPeer');
+  requireCount(offerTtlMs, 'offerTtlMs');
   requireCount(keep, 'keep');
 
   let ctx = null;
@@ -823,7 +833,10 @@ export function createFileTransferService({ maxActive = 8, maxPendingOffers = 64
         await reopenPart(t);
       }
       if (!running || rt.aborted) return;
-      if (t.state === 'offered' || t.state === 'paused') setState(t, 'receiving');
+      // 'verifying' is what a stop or a crash during the final hash leaves behind. The saved
+      // progress may be older than the last chunk, so the transfer goes back to receiving and
+      // asks for what it lacks; with every chunk held, resume() verifies again at once.
+      if (t.state === 'offered' || t.state === 'paused' || t.state === 'verifying') setState(t, 'receiving');
       rt.lastChunkAt = now();
       rt.stalls = 0;
       persist();
@@ -1220,6 +1233,10 @@ export function createFileTransferService({ maxActive = 8, maxPendingOffers = 64
     for (const t of transfers.values()) {
       if (!isActive(t)) continue;
       const { rt } = t;
+      if (t.direction === 'receive' && t.state === 'offered' && at - t.createdAt > offerTtlMs) {
+        void declineUnanswered(t);
+        continue;
+      }
       if (at - t.updatedAt > limits.messageLifetimeMs && !rt.activating && !rt.verifying) {
         void expire(t);
         continue;
@@ -1227,6 +1244,11 @@ export function createFileTransferService({ maxActive = 8, maxPendingOffers = 64
       if (t.direction === 'send') tickSend(t, at);
       else tickReceive(t, at);
     }
+  }
+
+  async function declineUnanswered(t) {
+    await finish(t, 'rejected', { error: 'denied' });
+    await sendControl(t, 'file-reject', { reason: 'denied' });
   }
 
   async function expire(t) {

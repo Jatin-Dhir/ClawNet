@@ -138,10 +138,10 @@ Everything is pushed to `origin/claude/overnight-mesh-engine`. Nothing was pushe
 
 ## 10. Remaining issues
 
-- **No independent code review of the transport, node runtime, API or console.** The
-  design was reviewed twice and the routing module once; the other foundation modules were
-  self-reviewed by the engineers who finished them. A planned final review was not run
-  because the usage ceiling for this session was reached.
+- **Independent code review of the upper layers: done on 16 November 2026.** Two
+  reviewers (one security, one correctness) produced 11 findings: 1 critical, 1 high,
+  5 medium and 4 low. 4 are fixed (the critical and the high one among them), 7 remain
+  open, none was rejected. Each open item is explained in `clawnet/docs/REVIEW.md`.
 - The private-network handshake (XXpsk0) has no published test vector in either source. It
   is cross-checked against the specification only.
 - The CLI has no commands for channels or file transfer yet. The API and console do.

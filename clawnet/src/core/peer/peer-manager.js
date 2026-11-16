@@ -363,15 +363,18 @@ export class PeerManager {
    * Dial an address now and resolve when linked to whoever answers.
    *
    * @param {string} addr "tcp://host:port"
-   * @param {{ sticky?: boolean }} [options] sticky (default): remember the address as
-   *   `manual` and keep redialing it until disconnect(id, { forget: true })
+   * @param {{ sticky?: boolean, learned?: boolean }} [options] sticky (default): remember
+   *   the address as `manual` and keep redialing it until disconnect(id, { forget: true }).
+   *   learned: the address came from a peer record or a beacon and not from the operator,
+   *   so it is held to the restricted-address rule, a DNS name's answers included, unless
+   *   `discovery.allowLoopback` is set (DESIGN.md 15.22)
    * @returns {Promise<PeerInfo>} also when the handshake ends in "duplicate" because a
    *   link to that node already exists
    * @throws {ConfigError} for an invalid address
    * @throws {StateError} "not-running: ..." or "peer-limit: ..."
    * @throws {HandshakeError} with the reason the dial failed
    */
-  async connect(addr, { sticky = true } = {}) {
+  async connect(addr, { sticky = true, learned = false } = {}) {
     if (!validateAddress(addr).ok) throw new ConfigError('address must be "tcp://host:port"');
     if (this.#state !== 'running') throw new StateError('not-running: the peer manager is not running');
     if (this.#links.size >= this.#config.peers.max) {
@@ -382,7 +385,7 @@ export class PeerManager {
     if (sticky) this.#book.add(addr, { source: AddressSource.MANUAL });
     const pending = this.#dials.get(addr);
     try {
-      const link = await (pending?.promise ?? this.#dial(addr, { source: AddressSource.MANUAL, explicit: true }));
+      const link = await (pending?.promise ?? this.#dial(addr, { source: AddressSource.MANUAL, explicit: true, learned }));
       const active = this.#links.get(link.id);
       if (active === undefined) throw new HandshakeError('closed', 'link closed right after it was established');
       return this.#info(active);
@@ -636,14 +639,14 @@ export class PeerManager {
 
   // ------------------------------------------------------------------ outbound
 
-  #dial(addr, { source, explicit }) {
+  #dial(addr, { source, explicit, learned = false }) {
     const controller = new AbortController();
     const entry = this.#book.get(addr);
     const info = { addr, id: entry?.id ?? null, source, since: this.#now(), attempt: (entry?.fails ?? 0) + 1 };
     const record = { info, controller, promise: null };
     // Aborting also ends a handshake already under way on the dialed socket.
     controller.signal.addEventListener('abort', () => record.socket?.destroy(), { once: true });
-    record.promise = this.#runDial(addr, record, { explicit, entry }).finally(() => {
+    record.promise = this.#runDial(addr, record, { explicit, learned, entry }).finally(() => {
       if (this.#dials.get(addr) === record) this.#dials.delete(addr);
       this.#scheduleMaintenance(0);
     });
@@ -653,14 +656,15 @@ export class PeerManager {
     return record.promise;
   }
 
-  async #runDial(addr, record, { explicit, entry }) {
+  async #runDial(addr, record, { explicit, learned, entry }) {
     const { host, port } = parseAddress(addr);
     const ip = ipKey(host);
     if (explicit) await this.#waitForDialSlot(ip, record.controller.signal);
     // Maintenance dials were admitted by #canStartDial in this same synchronous run.
     this.#ipBusy.add(ip);
     try {
-      const isStatic = explicit || (entry?.sources ?? []).some(s => s === AddressSource.MANUAL || s === AddressSource.BOOTSTRAP);
+      // An explicit dial is the operator's, unless discovery made it for an address it learned.
+      const isStatic = (explicit && !learned) || (entry?.sources ?? []).some(s => s === AddressSource.MANUAL || s === AddressSource.BOOTSTRAP);
       this.#stats.dialsStarted += 1;
       this.#emit('peer.dialing', { addr, peer: record.info.id, source: record.info.source, attempt: record.info.attempt });
       const startedAt = performance.now();

@@ -1448,7 +1448,8 @@ export class ClawNode {
     const block = new Set(peers.block);
     const allow = new Set(peers.allow);
     const allowOrigin = (origin) => origin === self || (!block.has(origin) && (allow.size === 0 || allow.has(origin)));
-    const dial = (address) => this.#peers.connect(address, { sticky: false });
+    // Only the operator's bootstrap list is trusted; what peers and beacons tell us is not.
+    const dial = (address, hint) => this.#peers.connect(address, { sticky: false, learned: hint?.source !== 'bootstrap' });
     const isKnown = (id) => this.#peers.isLinked(id) || this.#peers.dialing().some((entry) => entry.id === id);
 
     this.#governor = new DialGovernor({

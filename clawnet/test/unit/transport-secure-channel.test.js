@@ -630,6 +630,21 @@ test('close("shutdown") reaches the peer as a remote shutdown, exactly once', as
   assert.equal(ga.closes.length, 1);
 });
 
+test('a peer that says BYE and never closes its socket does not keep ours open', async t => {
+  const streams = memoryPair();
+  // The peer never reads our end of stream: its side stays open however long we wait.
+  const push = streams.client.push.bind(streams.client);
+  streams.client.push = chunk => (chunk === null ? false : push(chunk));
+  const { ca, cb } = await linkPair(t, {}, streams);
+  const gb = collect(cb);
+  collect(ca);
+  ca.send({ type: PacketType.BYE, header: { reason: 'shutdown' } });
+  await waitFor(() => gb.closes.length === 1);
+  assert.deepEqual(gb.closes[0], { reason: 'shutdown', remote: true });
+  assert.equal(streams.server.destroyed, false, 'the linger is still running');
+  await waitFor(() => streams.server.destroyed, { timeoutMs: 3000, message: 'the stream to be destroyed after the linger' });
+});
+
 test('the bytes on the wire contain no NodeId, no card field and no packet body', async t => {
   const server = net.createServer();
   await new Promise(resolve => server.listen({ host: '127.0.0.1', port: 0 }, resolve));

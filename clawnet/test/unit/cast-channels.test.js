@@ -380,6 +380,75 @@ test('the rate limit refuses a hostile origin: spacing against the record K befo
   assert.equal(held, 5);
 });
 
+test('a forged record with a huge counter costs a bounded amount of work and is refused for its signature', async (t) => {
+  const net = new SimNet({ seed: 8, datasets: () => [] });
+  t.after(() => net.close());
+  const node = await addCastNode(t, net, { limits: { castPerOriginPerMin: 5 } });
+  const author = Identity.generate();
+  const chan = channelWireId('ops');
+  const stream = `${chan}:${author.nodeId}`;
+  // Stepping from the counter down to the stream's floor would take days for these; a check
+  // that touches the dataset more often than a retention window holds is the bug.
+  let reads = 0;
+  const countReads = (name) => {
+    const original = node.dataset[name].bind(node.dataset);
+    node.dataset[name] = (...args) => {
+      reads += 1;
+      if (reads > 1000) throw new Error('the check walks the counters, not the records held');
+      return original(...args);
+    };
+  };
+  countReads('get');
+  countReads('range');
+  const forged = (n) => ({ ...castRecord(author, { chan, n, ts: net.now() }), sig: Buffer.alloc(64).toString('base64') });
+
+  // A new stream: nothing is held, so nothing is compared, and the signature is what refuses it.
+  assert.deepEqual(pick(node.dataset.offer(forged(Number.MAX_SAFE_INTEGER), 'peer')), { accepted: false, invalid: true, reason: 'bad-signature' });
+  assert.ok(reads <= 10, `reads for a new stream: ${reads}`);
+
+  // An open stream with a high floor: the same record is a gap, and a record within reach is
+  // compared against the records held only.
+  const top = 1_000_000_000_000;
+  assert.equal(node.dataset.offer(castRecord(author, { chan, n: top, ts: net.now() }), 'peer').accepted, true);
+  reads = 0;
+  assert.deepEqual(pick(node.dataset.offer(forged(Number.MAX_SAFE_INTEGER), 'peer')), { accepted: false, invalid: undefined, reason: 'gap' });
+  assert.deepEqual(pick(node.dataset.offer(forged(top + 3), 'peer')), { accepted: false, invalid: true, reason: 'bad-signature' });
+  assert.deepEqual(pick(node.dataset.offer(forged(top - 5), 'peer')), { accepted: false, invalid: undefined, reason: 'rate' });
+  assert.ok(reads <= 30, `reads for an open stream: ${reads}`);
+  assert.equal(node.dataset.topOf(stream), top);
+});
+
+test('a full stream table gives its slots to joined channels, and the per-origin cap counts only streams still open', async (t) => {
+  const net = new SimNet({ seed: 9, datasets: () => [] });
+  t.after(() => net.close());
+  const node = await addCastNode(t, net, { options: { maxStreams: MAX_STREAMS_PER_ORIGIN } });
+  const now = net.now();
+  const squatter = Identity.generate();
+  // One identity holds every slot, in channels nobody here joined.
+  for (let i = 0; i < MAX_STREAMS_PER_ORIGIN; i += 1) {
+    assert.equal(node.dataset.offer(castRecord(squatter, { chan: channelWireId(`junk-${i}`), n: 1, ts: now }), 'peer').accepted, true);
+  }
+  assert.equal(node.dataset.streamCount, MAX_STREAMS_PER_ORIGIN);
+  // Another channel nobody joined is refused: nothing outranks the squatter's streams.
+  const stranger = Identity.generate();
+  assert.deepEqual(pick(node.dataset.offer(castRecord(stranger, { chan: channelWireId('elsewhere'), n: 1, ts: now }), 'peer')), { accepted: false, invalid: undefined, reason: 'streams-full' });
+
+  // A channel this node joins outranks them, whoever writes in it.
+  await node.api.join('ops');
+  const ops = channelWireId('ops');
+  assert.equal(node.dataset.offer(castRecord(stranger, { chan: ops, n: 1, ts: now, text: 'first' }), 'peer').accepted, true);
+  assert.equal(node.dataset.streamCount, MAX_STREAMS_PER_ORIGIN);
+  assert.deepEqual(texts(node.api.history('ops')), ['first']);
+
+  // One of the squatter's streams went to make room. It has 15 open now, so it may open one
+  // more, in the joined channel, although its count was 16 before the eviction.
+  assert.equal(node.dataset.offer(castRecord(squatter, { chan: ops, n: 1, ts: now, text: 'squatter' }), 'peer').accepted, true);
+  assert.equal(node.service.stats().streamRejected, 0);
+  // Leaving takes the preference away again.
+  await node.api.leave('ops');
+  assert.deepEqual(pick(node.dataset.offer(castRecord(Identity.generate(), { chan: ops, n: 1, ts: now }), 'peer')), { accepted: false, invalid: undefined, reason: 'streams-full' });
+});
+
 test('a rate of zero refuses every cast, local and remote', async (t) => {
   const { nodes: [a] } = await line(t, 1, { limits: { castPerOriginPerMin: 0 } });
   await assert.rejects(() => a.api.publish('ops', 'x'), (error) => error instanceof StateError && error.message.startsWith('rate-limited:'));

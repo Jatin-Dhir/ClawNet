@@ -288,6 +288,24 @@ test('addresses learned from the network on loopback are not dialed unless allow
   assert.equal(of(lax, 'peer.dialing')[0].source, 'pex');
 });
 
+test('a learned dial to a DNS name is refused when the name resolves to loopback; an operator dial is not', async t => {
+  const target = await startPeer(t);
+  const port = Number(target.addr.split(':').pop());
+  const a = await startPeer(t);
+  // "localhost" stands for any name an attacker points at an address of ours.
+  await assert.rejects(a.pm.connect(`tcp://localhost:${port}`, { sticky: false, learned: true }), err => {
+    assert.equal(err.reason, 'connect-failed');
+    assert.equal(err.cause?.code, 'ERESTRICTED');
+    return true;
+  });
+  assert.equal(a.pm.size, 0);
+  const info = await a.pm.connect(`tcp://localhost:${port}`, { sticky: false });
+  assert.equal(info.id, target.id);
+  // With the test switch the same learned dial goes through.
+  const lax = await startPeer(t, { config: { discovery: { allowLoopback: true } } });
+  assert.equal((await lax.pm.connect(`tcp://localhost:${port}`, { sticky: false, learned: true })).id, target.id);
+});
+
 test('dials respect the global dials-per-second cap and one attempt in flight per IP', async t => {
   const a = await startPeer(t, { config: { limits: { dialsPerSecond: 2 } } });
   const closed = [];

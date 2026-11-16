@@ -12,6 +12,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 import {
+  DEFAULT_OFFER_TTL_MS,
   INITIAL_WINDOW,
   MAX_CHUNKS,
   SACK_MAX_RANGES,
@@ -679,6 +680,28 @@ test('the acceptance policy: ask waits, auto accepts, deny refuses; reject and a
   assert.deepEqual(await asker.listDownloads(), ['ask.bin']);
 });
 
+test('an offer nobody answers is declined after the offer time-out, which frees its slot for the next sender', async (t) => {
+  const net = new Net();
+  const asker = await addNode(t, net, { files: { accept: 'ask' }, options: { maxPendingPerPeer: 1, offerTtlMs: 2000 } });
+  const raw = addRaw(net);
+  const stale = offerFor(randomBytes(100), { name: 'stale.bin' });
+  const next = offerFor(randomBytes(100), { name: 'next.bin' });
+  raw.send(asker.id, 'file-offer', stale.meta);
+  await net.until(() => asker.api.get(stale.tid)?.state === 'offered', { message: 'the offer' });
+  // The slot is taken: another offer from the same peer is refused as busy.
+  raw.send(asker.id, 'file-offer', next.meta);
+  await net.until(() => raw.messages('file-reject').length === 1, { message: 'busy' });
+  assert.equal(raw.messages('file-reject')[0].meta.reason, 'busy');
+  await net.run(2500);
+  await net.until(() => asker.api.get(stale.tid).state === 'rejected', { message: 'the time-out' });
+  await net.until(() => raw.messages('file-reject').length === 2, { message: 'the decline' });
+  assert.deepEqual(raw.messages('file-reject')[1].meta, { tid: stale.tid, reason: 'denied', kind: 'file-reject' });
+  raw.send(asker.id, 'file-offer', next.meta);
+  await net.until(() => asker.api.get(next.tid)?.state === 'offered', { message: 'the next offer is held' });
+  assert.equal(raw.messages('file-reject').length, 2);
+  assert.throws(() => createFileTransferService({ offerTtlMs: 0 }), ConfigError);
+});
+
 test('cancel from either side stops the transfer and removes the part file', async (t) => {
   for (const canceller of ['sender', 'receiver']) {
     const { net, sender, receiver } = await pair(t);
@@ -1069,8 +1092,49 @@ test('stats count what happened', async (t) => {
   assert.ok(chunksDuplicate + chunksRejected <= resent);
 });
 
+test('a receiver stopped while it verifies a finished file resumes after the restart and completes', async (t) => {
+  const CHUNK = 32 * 1024;
+  const net = new Net();
+  const receiver = await addNode(t, net, { files: { chunkSize: CHUNK } });
+  const raw = addRaw(net);
+  // Fewer chunks than the persist threshold, on a clock that does not move, so that no
+  // progress is saved before the stop: the state a crash leaves, however it is reached.
+  const data = randomBytes(48 * CHUNK - 5);
+  const offer = offerFor(data, { chunk: CHUNK });
+  const sealed = sealAll(offer);
+  raw.send(receiver.id, 'file-offer', offer.meta);
+  await net.until(() => receiver.api.get(offer.tid)?.state === 'receiving', { message: 'the offer to be accepted' });
+  for (const body of sealed) raw.chunk(receiver.id, body);
+  net.step();
+  // The stop has to land while the whole-file hash is being computed: poll between the
+  // file operations of the verification and stop at the first sight of the state.
+  let caught = false;
+  for (let i = 0; i < 400_000 && !caught; i += 1) {
+    const { state } = receiver.api.get(offer.tid);
+    if (state === 'verifying') caught = true;
+    else if (state === 'completed') break;
+    else await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(caught, true, 'the transfer was seen verifying');
+  const acceptsBefore = raw.messages('file-accept').length;
+  const restarted = await receiver.restart();
+  await net.until(() => raw.messages('file-accept').length > acceptsBefore, { message: 'the restarted receiver to tell the sender what it holds' });
+  const accepted = restarted.api.get(offer.tid);
+  assert.equal(accepted.state, 'receiving', 'it asks for what it lacks instead of sitting in verifying');
+  assert.ok(accepted.chunksDone < accepted.chunks, 'the saved progress was older than the last chunk');
+  // The sender answers as it would on its own stall: the offer again, then the chunks.
+  raw.send(restarted.id, 'file-offer', offer.meta);
+  for (const body of sealed) raw.chunk(restarted.id, body);
+  await net.until(() => restarted.api.get(offer.tid).state === 'completed', { message: 'the transfer to complete after the restart' });
+  assert.equal(hex(sha256(await readFile(join(restarted.downloads, 'file.bin')))), hex(sha256(data)));
+  assert.deepEqual(await restarted.listDownloads(), ['file.bin'], 'no part file is left');
+  await net.until(() => raw.messages('file-done').length > 0, { message: 'file-done' });
+  assert.equal(raw.messages('file-done').at(-1).meta.ok, true);
+});
+
 test('limits are honest constants', () => {
   assert.equal(MAX_CHUNKS, 1048576);
   assert.equal(SACK_MAX_RANGES, 64);
   assert.equal(INITIAL_WINDOW, 4);
+  assert.equal(DEFAULT_OFFER_TTL_MS, 24 * 3_600_000);
 });
