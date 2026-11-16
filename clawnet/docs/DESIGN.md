@@ -38,7 +38,12 @@ resistance in open networks. These are listed as limitations, not hidden.
 | ClawCast | `src/cast/` | broadcast channels |
 | ClawGate | `src/gate/` | relay and mailbox custody; the local control API that UIs and the CLI use |
 | ClawVault | `src/vault/` | key storage at rest, durable stores, encrypted file transfer |
-| ClawView | `../src/clawview/` | React + Three.js console served by ClawGate |
+| ClawView | `console/` | React + Three.js console, built into `ui/` and served by ClawGate |
+
+Everything ClawNet lives under `clawnet/`: the engine, its tests, its documentation and the
+console with its own `package.json`. The website at the repository root is a separate
+project that happens to share the repository. Nothing under `clawnet/` imports from it or
+depends on its build, so the directory can be moved into a repository of its own unchanged.
 
 Layering rule: `core/crypto`, `core/wire`, `core/routing`, `vault/store`, `sync` contain no
 socket or timer code of their own. They take injected `now()`, `send()`, `verify()`
