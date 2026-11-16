@@ -106,7 +106,13 @@ test('three node processes: a message goes from the first to the third through t
   await eventually(async () => (await cliJson(homes[0], ['routes'])).routes.some((route) => route.dst === ids[2] && route.hops === 2), { message: 'a two-hop route' });
 
   // The first node sends; the third's id is given as a prefix, which the CLI resolves.
-  const send = await cliJson(homes[0], ['send', ids[2].slice(0, 12), 'hello', 'from', 'the', 'first', 'node']);
+  // A route can be known a moment before the destination's identity card has arrived by peer
+  // exchange, and a message cannot be sealed without the card. Until then the node refuses
+  // with unknown_destination and queues nothing, so trying again cannot send it twice.
+  const send = await eventually(
+    () => cliJson(homes[0], ['send', ids[2].slice(0, 12), 'hello', 'from', 'the', 'first', 'node']),
+    { message: 'the third node\'s identity card to reach the first' },
+  );
   assert.equal(send.message.peer, ids[2]);
   assert.equal(send.message.text, 'hello from the first node');
   assert.equal(send.message.direction, 'out');

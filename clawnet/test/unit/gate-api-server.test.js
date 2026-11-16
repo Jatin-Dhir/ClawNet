@@ -747,9 +747,12 @@ test('POST /shutdown answers 202, streams see node.stopping and are closed, and 
   await stream.take(1);
   const answer = await call(node.port, { method: 'POST', path: '/api/v1/shutdown', token: node.token, body: {} });
   assert.deepEqual([answer.status, answer.json], [202, { stopping: true }]);
-  const stopping = await stream.take(1);
-  assert.equal(stopping[0].type, 'node.stopping');
-  assert.equal(stopping[0].data.data.reason, 'api');
+  // Another event (a topology change, say) can sit in the stream ahead of this one.
+  let stopping;
+  do {
+    [stopping] = await stream.take(1);
+  } while (stopping.type !== 'node.stopping');
+  assert.equal(stopping.data.data.reason, 'api');
   await stream.waitClosed();
   for (let i = 0; i < 100 && node.node.state !== 'stopped'; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(node.node.state, 'stopped');
