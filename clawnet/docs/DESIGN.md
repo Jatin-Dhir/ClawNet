@@ -120,8 +120,9 @@ A `DATA` packet's header is all that a forwarding node can read:
 { "id": 32 hex chars, "dst": NodeId, "ttl": 1..32, "try": 0..255 }   (+ optional "cust": NodeId)
 ```
 
-The **sender is not in the header.** Forwarders learn the destination and the previous
-hop, not the originator.
+The **sender is not in the header**, but that is not anonymity. A forwarder knows the
+previous hop, the hop count and the whole topology, and can usually work out who
+originated a packet. Hiding the sender from forwarders is not a goal.
 
 The body is `u8 scheme || ...`:
 
@@ -287,3 +288,131 @@ rather than faking them.
 - End-to-end tests start separate OS processes through the CLI.
 - Everything here runs on one machine. No test in this repository demonstrates
   multi-machine operation, and the documentation must not say otherwise.
+
+## 15. Changes adopted after design review
+
+Two independent reviews (cryptography; distributed systems) were run against sections
+1 to 14 before the networking layers were built. The changes below were adopted. **Where
+this section conflicts with anything above, or with `ARCHITECTURE.md`, this section wins.**
+
+### Identity and encoding
+
+1. A NodeId must be the canonical encoding of its key: 51 characters of `[a-z2-7]`
+   followed by `a` or `q`. Sixteen strings would otherwise name one key, and every
+   comparison done on the string (blocklist, self-connection, tie-break) could be dodged.
+2. Canonical JSON rejects the object key `__proto__`.
+3. An identity belongs to one network. The data directory records the `networkId` it was
+   created for and the node refuses to start with a different one, because signed records
+   and identity cards do not name their network.
+
+### Links
+
+4. Private networks use `Noise_XXpsk0`, not `XXpsk3`: the network key is mixed in first, so
+   a non-member's first message fails before any Diffie-Hellman work and nothing about the
+   responder (identity card, addresses) is sent to it.
+5. Duplicate links: compare the two 32-byte public keys as unsigned bytes. The tie-break
+   applies only when the links were initiated from opposite sides within one handshake
+   timeout of each other; otherwise the newer authenticated link replaces the older.
+6. Any authenticated inbound record proves the peer is alive, not only a `PONG`. A `PING`
+   carries a random nonce that the `PONG` must echo, so round-trip time cannot be faked low.
+7. Each link has a send scheduler with strict priority: control (ping, sync, gossip), then
+   acks, then data. Senders keep sync packets within 64 KiB and routed packets within
+   128 KiB so that no packet monopolises a slow link; 1 MiB remains the parser's hard bound.
+8. Control traffic and routed `DATA` have separate rate budgets. Exceeding the `DATA`
+   budget drops that packet and counts it. It never disconnects the neighbour, who may only
+   be relaying someone else's flood.
+
+### End-to-end messages
+
+9. Sender authentication is also signed. `meta.hs` is an Ed25519 signature by the sender's
+   identity key over
+   `utf8("clawnet/1/e2e-auth") || 0x00 || h || SHA-256(u32be(len(meta')) || meta' || content)`,
+   where `h` is the Noise handshake hash and `meta'` is the canonical `meta` without `hs`.
+   The recipient verifies it against `card.id`. This removes key-compromise impersonation:
+   someone who steals a recipient's e2e key can read its mail but cannot forge mail to it.
+   The signature has to cover the content as well as `h`, because the holder of the
+   recipient's key can derive the transport keys of a genuine message and could otherwise
+   swap its content while keeping the sender's signature.
+10. The recipient's seen-cache is keyed by (authenticated sender, id), written only after
+    the whole body verifies, persisted across restarts, and each entry is kept until
+    `ts + lifetime + skew`. A `ts` further ahead than the allowed clock skew is rejected. An
+    ack counts only if its authenticated sender is the message's destination. Without the
+    sender in the key, anyone who saw an id in a header could burn it before the real
+    message arrived.
+11. Forwarders suppress duplicates by `SHA-256(dst || id || try || body)`, held for 60 s.
+    `try` wraps modulo 256. Keying on the header alone would let one packet cancel every
+    later retransmission.
+12. Retransmission uses jittered exponential backoff from 2 s to 15 min, at most four
+    unacknowledged messages in flight per destination, and attempts triggered by a route
+    appearing still respect the backoff floor plus up to 2 s of jitter.
+13. A destination that is a live direct neighbour is sent to directly, whatever the
+    shortest-path computation says.
+
+### Routing and synchronisation
+
+14. Records have a total order. A higher `seq` wins; at equal `seq` the record with the
+    greater SHA-256 of its canonical form wins and is flooded again. Digests carry
+    `(seq, first 8 bytes of that hash)`. Two valid records with one `seq` from one origin is
+    equivocation and is reported as an event.
+15. LSA freshness is checked against the signed sequence number, which is wall-clock
+    milliseconds: an LSA more than `lsaMaxAgeMs + maxClockSkewMs` behind the local clock, or
+    more than `maxClockSkewMs` ahead of it, is rejected. This costs loosely synchronised
+    clocks and buys protection against a former neighbour replaying old LSAs to keep a
+    departed node "reachable" through itself.
+16. A node that sees a record from its own origin with a sequence at or above its own jumps
+    past it and re-originates (the self-originated rule of RFC 2328, section 13.4). The same
+    applies to its cast counters. A second node persistently doing the same is a cloned
+    identity and is reported.
+17. An origin issues at most one LSA per 5 s. Cost is re-advertised only when it has moved
+    by more than 25 % **and** more than 10 ms. Receivers always keep the newest LSA but
+    flood at most one per origin per 5 s.
+18. The cost of a link is the larger of the two values its endpoints advertise, so a node
+    cannot attract traffic by understating its own side.
+19. Every per-origin table is capped, evicting first the origins that are not attached to
+    the confirmed graph. A neighbour may introduce only a bounded number of previously
+    unknown origins per minute. The blocklist, and the allowlist when set, apply to record
+    origins and not only to links.
+20. Anti-entropy compares a hash of the digest first and stops if the two sides match.
+21. Two clocks: a monotonic clock for intervals and expiry, wall time only for `seq`, `ts`
+    and anything persisted.
+
+### Discovery
+
+22. Dials are budgeted by address, not by NodeId: one attempt in flight per IP, failure
+    backoff per IP shared by every NodeId that claims it, and a global dial-rate cap.
+    Addresses learned from records or beacons that are loopback, unspecified, multicast or
+    link-local are never dialed unless `discovery.allowLoopback` is set (tests and devnet).
+    A signature on a peer record proves who said it, not that the address is theirs.
+23. Beacons are rate-limited per source and globally before any signature is checked, and
+    ignored when the NodeId is already connected or in backoff. The signed body includes
+    the network id and port. With a network key, a beacon also carries an HMAC-SHA256 under
+    a key derived from it, checked before the signature.
+
+### Casts, files, custody
+
+24. Cast encryption is bound to its record: the associated data and the HKDF `info` both
+    include the canonical form of `{type, origin, chan, n, ts, enc, salt}`. Otherwise a
+    non-member could re-sign a member's ciphertext as its own.
+25. The cast rate limit is a function of signed content (`ts(n) - ts(n-K)` must be at least
+    the window), so every node reaches the same verdict and a backlog arriving after a
+    partition is not mistaken for a flood.
+26. A file sender records a hash of every chunk when the offer is made and refuses to seal
+    a chunk that no longer matches, aborting the transfer; a restart uses a new key. One
+    key and nonce therefore never encrypt two different plaintexts. Flow control is
+    receiver-driven credit: cumulative ack plus window, starting at 4 chunks, additive
+    increase, halved on loss.
+27. A custody deposit is a sealed message to the mailbox, so the depositor is
+    authenticated. It names the final destination, the id, the SHA-256 of the inner packet
+    and an expiry. Quotas are per authenticated depositor. The mailbox retries with backoff
+    until it holds the destination's signed receipt; the originator accepts a receipt as
+    evidence of delivery; receipts expire with the message lifetime.
+
+### Limitations added to the list
+
+- Channel keys cannot be rotated and members cannot be removed; a leaked channel key
+  exposes the channel's whole stored history.
+- Identity cards carry no expiry or epoch, so a stolen link or e2e key cannot be retired
+  short of abandoning the identity.
+- Sender anonymity is not provided (see section 6).
+- Open networks have no defence against one participant creating many identities beyond
+  the caps in item 19.
