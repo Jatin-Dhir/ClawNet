@@ -10,6 +10,7 @@ import { createCastService } from './cast/channels.js';
 import { createDiagService } from './core/diag/diag.js';
 import { createMessagesService } from './core/messaging/conversations.js';
 import { createApiService } from './gate/api-server.js';
+import { createWebAppService } from './gate/webapp-server.js';
 import { createFileTransferService } from './vault/file-transfer.js';
 
 /**
@@ -31,6 +32,8 @@ export function defaultServices({ uiDir } = {}) {
     // which the node keeps a relay-only one that never surfaces casts.
     createCastService(),
     createFileTransferService(),
+    // Serves the phone web app when `webapp.enabled`; idle otherwise (DESIGN.md section 16).
+    createWebAppService(),
     // ADD NEW SERVICES HERE, before the API: relay, mailbox and the like.
     // Each is one line in the style of the ones above, `createXService()`, importing its
     // factory at the top of this file. Whatever routes a service registers through

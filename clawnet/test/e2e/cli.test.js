@@ -39,7 +39,7 @@ test('init, start, status, a refused second start, stop: exit codes, files and t
   const status = await cliJson(home, ['status']);
   assert.equal(status.nodeId, nodeId);
   assert.equal(status.state, 'running');
-  assert.deepEqual(status.services, ['messages', 'diag', 'cast', 'files', 'api']);
+  assert.deepEqual(status.services, ['messages', 'diag', 'cast', 'files', 'webapp', 'api']);
 
   // A second node on the same data directory fails with the lock message and no stack trace.
   const second = await runCli(['--data-dir', home, 'start', '--listen', '127.0.0.1:0', '--api-port', '0', '--no-multicast']);

@@ -4,6 +4,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 
 import { checkNetworkId, formatNetworkIdFile, loadConfig } from '../core/config.js';
@@ -139,6 +140,22 @@ async function overridesFrom(values) {
     overrides.api = { port: Number(values['api-port']) };
   }
   if (values.network !== undefined) overrides.networkId = values.network;
+  // --phone switches on both halves of phone support (DESIGN.md section 16): links over
+  // WebSocket, and the web app that phones load. Each port flag implies its half.
+  const port = (flag) => {
+    const text = values[flag];
+    if (!/^[0-9]{1,5}$/.test(text) || Number(text) > 65535) throw new UsageError(`--${flag} must be a port number`);
+    return Number(text);
+  };
+  if (values.phone === true || values['websocket-port'] !== undefined) {
+    overrides.websocket = { enabled: true };
+    if (values['websocket-port'] !== undefined) overrides.websocket.port = port('websocket-port');
+  }
+  if (values.phone === true || values['webapp-port'] !== undefined) {
+    overrides.webapp = { enabled: true };
+    if (values['webapp-port'] !== undefined) overrides.webapp.port = port('webapp-port');
+    overrides.websocket ??= { enabled: true };
+  }
   if (values['network-key-file'] !== undefined) overrides.networkKey = await readSecretFile(values['network-key-file'], 'network key');
   const discovery = {};
   if (values.bootstrap !== undefined) discovery.bootstrap = values.bootstrap;
@@ -200,19 +217,97 @@ export async function runNode({ dataDir, values, io }) {
       else node.events.on('node.stopped', () => resolve());
     });
     const api = node.service('api');
+    const phone = node.status().phone;
     io.stdout.write(`${JSON.stringify({
       event: 'ready',
       nodeId: node.id,
       listen: node.status().listen,
       api: api?.url ?? null,
+      phone,
       dataDir,
     })}\n`);
+    if (phone.webapp !== null) io.stderr.write(phoneHint(phone));
     await stopped;
   } finally {
     for (const name of names) io.signals.off(name, onSignal);
   }
   if (stopError !== null) throw new CliError(`the node did not stop cleanly: ${stopError.message}`);
   return ExitCode.OK;
+}
+
+/** True for an address only this computer can reach: 127.0.0.0/8, ::1 or localhost. */
+function isLoopbackName(host) {
+  const bare = host.replace(/^\[|\]$/g, '').toLowerCase();
+  return bare === 'localhost' || bare === '::1' || /^127\./.test(bare) || /^::ffff:127\./.test(bare);
+}
+
+/**
+ * Network adapters that belong to virtual machines, containers or the like, by the names
+ * Windows, Linux and macOS give them. A phone on the Wi-Fi cannot reach their addresses.
+ */
+const VIRTUAL_ADAPTER = /vethernet|hyper-v|wsl|vmware|vmnet|virtualbox|vbox|docker|podman|virbr|^veth|^br-|^vnic|^bridge\d|parallels/i;
+
+/** The name of the adapter that holds `ip`, or null. */
+function adapterOf(ip, interfaces) {
+  let all;
+  try {
+    all = interfaces() ?? {};
+  } catch {
+    return null;
+  }
+  for (const [name, list] of Object.entries(all)) {
+    if ((list ?? []).some((entry) => entry.address === ip)) return name;
+  }
+  return null;
+}
+
+/**
+ * What to tell a person who wants to use the phone app, on standard error (standard
+ * output keeps its one JSON line). Each address is shown with its adapter's name, and
+ * addresses of virtual adapters (virtual machines, WSL, containers) are set apart, since
+ * a phone cannot use them; this came up in the first test on a real phone.
+ *
+ * @param {{ webapp: string[], websocket: string | null }} phone `status().phone`
+ * @param {() => object} [interfaces] os.networkInterfaces, injectable for tests
+ * @returns {string}
+ */
+export function phoneHint({ webapp, websocket }, interfaces = networkInterfaces) {
+  if (webapp.length === 0) {
+    return 'Phone app: on, but this computer has no network address a phone could use. Connect it to Wi-Fi or Ethernet and start again.\n';
+  }
+  if (webapp.every((url) => isLoopbackName(new URL(url).hostname))) {
+    return [
+      `Phone app: on, but only this computer can open it (${webapp.join(', ')}), because`,
+      'webapp.host is a loopback address. For a phone, set webapp.host and websocket.host to',
+      '0.0.0.0 (the default) and start again.',
+      '',
+    ].join('\n');
+  }
+  const entries = webapp.map((url) => {
+    const adapter = adapterOf(new URL(url).hostname, interfaces);
+    return { url, adapter, virtual: adapter !== null && VIRTUAL_ADAPTER.test(adapter) };
+  });
+  // When every address looks virtual, the guess is probably wrong: show them all as usable.
+  const usable = entries.some((e) => !e.virtual) ? entries.filter((e) => !e.virtual) : entries;
+  const others = entries.filter((e) => !usable.includes(e));
+  const show = (e) => `  ${e.url}${e.adapter === null ? '' : `   (${e.adapter})`}`;
+  const lines = [
+    'Phone app: on a phone connected to the same Wi-Fi as this computer, open',
+    ...usable.map(show),
+    'in Safari (iPhone) or Chrome (Android). If Windows asks whether Node.js may use the',
+    'network, allow it on private networks. If the phone cannot open the address, the',
+    'checklist is under "Phones" in docs/OPERATIONS.md (section 6a).',
+  ];
+  if (others.length > 0) {
+    lines.push('Not for phones, these belong to virtual adapters on this computer:', ...others.map(show));
+  }
+  if (websocket !== null && isLoopbackName(websocket.replace(/:\d+$/, ''))) {
+    lines.push(
+      'But websocket.host is a loopback address, so a phone can open the app and not link.',
+      'Set websocket.host to 0.0.0.0 (the default) and start again.',
+    );
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 /** A start failure the user can act on, without a stack trace. */
@@ -223,6 +318,12 @@ function describeStartFailure(error, dataDir) {
   }
   if (error instanceof StateError && error.message.startsWith('api-listen-failed:')) {
     return new CliError(error.message.replace(/^api-listen-failed: /, 'the control API '));
+  }
+  if (error instanceof StateError && error.message.startsWith('websocket-listen-failed:')) {
+    return new CliError(`${error.message.replace(/^websocket-listen-failed: /, 'the WebSocket port for phones: ')} (another program may be using it; choose one with --websocket-port)`);
+  }
+  if (error instanceof StateError && error.message.startsWith('webapp-listen-failed:')) {
+    return new CliError(`${error.message.replace(/^webapp-listen-failed: /, 'the phone app port: ')} (another program may be using it; choose one with --webapp-port)`);
   }
   if (error instanceof ConfigError || error instanceof ClawNetError) return new CliError(error.message, { cause: error });
   return error;

@@ -15,7 +15,7 @@ import { ExitCode, UsageError } from '../../src/cli/errors.js';
 import { resolveNodeId } from '../../src/cli/commands.js';
 import { devnetEdges } from '../../src/cli/devnet.js';
 import { duration, table } from '../../src/cli/format.js';
-import { parseListen } from '../../src/cli/lifecycle.js';
+import { parseListen, phoneHint } from '../../src/cli/lifecycle.js';
 import { helpText, main, parseCommandLine } from '../../src/cli/main.js';
 import { Identity } from '../../src/core/crypto/identity.js';
 import { startApiNode } from '../helpers/api.js';
@@ -208,7 +208,8 @@ test('start runs a node in the foreground, prints one ready line, and a signal s
   await waitFor(() => cli.out().includes('\n'), { message: 'the ready line' });
   assert.equal(cli.lines().length, 1, 'exactly one line on standard output');
   const ready = JSON.parse(cli.lines()[0]);
-  assert.deepEqual(Object.keys(ready).sort(), ['api', 'dataDir', 'event', 'listen', 'nodeId']);
+  assert.deepEqual(Object.keys(ready).sort(), ['api', 'dataDir', 'event', 'listen', 'nodeId', 'phone']);
+  assert.deepEqual(ready.phone, { websocket: null, webapp: null }, 'phone support is off unless asked for');
   assert.equal(ready.event, 'ready');
   assert.match(ready.nodeId, /^[a-z2-7]{52}$/);
   assert.match(ready.listen, /^tcp:\/\/127\.0\.0\.1:[1-9][0-9]*$/);
@@ -238,6 +239,72 @@ test('start runs a node in the foreground, prints one ready line, and a signal s
   const gone = await run(['-d', target, 'status']);
   assert.equal(gone.code, ExitCode.NOT_RUNNING);
   assert.match(gone.err(), /no node is running/);
+});
+
+test('start --phone opens the WebSocket port and serves the phone app, and says where', async (t) => {
+  const dir = await tempDir(t, 'cli-phone');
+  const target = join(dir, 'node');
+  assert.equal((await run(['-d', target, 'init', '--no-passphrase', '--network', 'cli-test'])).code, 0);
+  // Loopback only, so the test opens nothing to the network.
+  await writeFile(join(target, 'config.json'), JSON.stringify({ networkId: 'cli-test', websocket: { host: '127.0.0.1' }, webapp: { host: '127.0.0.1' } }));
+  const cli = makeIo();
+  const running = main(['-d', target, 'start', '--listen', '127.0.0.1:0', '--api-port', '0', '--no-multicast', '--phone', '--websocket-port', '0', '--webapp-port', '0'], cli.io);
+  await waitFor(() => cli.out().includes('\n'), { message: 'the ready line' });
+  const ready = JSON.parse(cli.lines()[0]);
+  assert.match(ready.phone.websocket, /^127\.0\.0\.1:[1-9][0-9]*$/);
+  assert.equal(ready.phone.webapp.length, 1);
+  assert.match(ready.phone.webapp[0], /^http:\/\/127\.0\.0\.1:[1-9][0-9]*\/$/);
+  // A loopback address is no use to a phone, and the hint says so plainly.
+  assert.match(cli.err(), /only this computer can open it/);
+  const page = await fetch(ready.phone.webapp[0]);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /<title>ClawNet<\/title>/);
+  const config = await (await fetch(new URL('/config.json', ready.phone.webapp[0]))).json();
+  assert.equal(config.networkId, 'cli-test');
+  assert.equal(config.websocket.port, Number(ready.phone.websocket.split(':').pop()));
+  cli.signals.emit('SIGINT');
+  assert.equal(await running, ExitCode.OK);
+  await assert.rejects(() => fetch(ready.phone.webapp[0]), 'the app server stops with the node');
+});
+
+test('start refuses a bad phone port with a usage error', async (t) => {
+  const dir = await tempDir(t, 'cli-phone');
+  const target = join(dir, 'node');
+  assert.equal((await run(['-d', target, 'init', '--no-passphrase', '--network', 'cli-test'])).code, 0);
+  const bad = await run(['-d', target, 'start', '--webapp-port', '99999']);
+  assert.equal(bad.code, ExitCode.USAGE);
+  assert.match(bad.err(), /--webapp-port must be a port number/);
+});
+
+test('the phone hint lists the addresses a phone can use, and says when there are none', () => {
+  const lan = phoneHint({ webapp: ['http://192.168.1.20:47490/'], websocket: '0.0.0.0:47471' });
+  assert.match(lan, /same Wi-Fi/);
+  assert.match(lan, /http:\/\/192\.168\.1\.20:47490\//);
+  assert.doesNotMatch(lan, /loopback/);
+  assert.match(phoneHint({ webapp: [], websocket: '0.0.0.0:47471' }), /no network address a phone could use/);
+  assert.match(phoneHint({ webapp: ['http://127.0.0.1:47490/'], websocket: '127.0.0.1:47471' }), /only this computer can open it/);
+  assert.match(phoneHint({ webapp: ['http://[::1]:47490/'], websocket: '[::1]:47471' }), /only this computer can open it/);
+  const halfway = phoneHint({ webapp: ['http://192.168.1.20:47490/'], websocket: '127.0.0.1:47471' });
+  assert.match(halfway, /can open the app and not link/);
+});
+
+test('the phone hint names each address\'s adapter and sets virtual adapters apart', () => {
+  // The adapters of the PC on which the app was first tried with a real phone.
+  const interfaces = () => ({
+    'vEthernet (WSL (Hyper-V firewall))': [{ family: 'IPv4', address: '172.22.0.1', internal: false }],
+    'VMware Network Adapter VMnet8': [{ family: 'IPv4', address: '192.168.65.1', internal: false }],
+    'Wi-Fi 2': [{ family: 'IPv4', address: '192.168.29.220', internal: false }],
+  });
+  const webapp = ['http://172.22.0.1:47490/', 'http://192.168.29.220:47490/', 'http://192.168.65.1:47490/'];
+  const [usable, virtual] = phoneHint({ webapp, websocket: '0.0.0.0:47471' }, interfaces).split('Not for phones');
+  assert.match(usable, /http:\/\/192\.168\.29\.220:47490\/ +\(Wi-Fi 2\)/);
+  assert.doesNotMatch(usable, /172\.22\.0\.1|192\.168\.65\.1/);
+  assert.match(virtual, /172\.22\.0\.1:47490\/ +\(vEthernet \(WSL/);
+  assert.match(virtual, /192\.168\.65\.1:47490\/ +\(VMware/);
+  // When every address looks virtual the guess is probably wrong, so all are offered.
+  const onlyVirtual = phoneHint({ webapp: ['http://172.22.0.1:47490/'], websocket: '0.0.0.0:47471' }, interfaces);
+  assert.match(onlyVirtual, /open\n {2}http:\/\/172\.22\.0\.1:47490\//);
+  assert.doesNotMatch(onlyVirtual, /Not for phones/);
 });
 
 test('start fails with a plain message for a missing identity, a wrong passphrase and a bad flag', async (t) => {

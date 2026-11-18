@@ -151,9 +151,12 @@ export const COMMANDS = {
 
   start: {
     summary: 'run a node in the foreground',
-    usage: 'start [--listen host:port] [--api-port n] [--bootstrap addr]... [--network id]\n        [--network-key-file f] [--multicast | --no-multicast] [--passphrase-file f]',
+    usage: 'start [--listen host:port] [--api-port n] [--bootstrap addr]... [--network id]\n        [--network-key-file f] [--multicast | --no-multicast] [--passphrase-file f]\n        [--phone] [--websocket-port n] [--webapp-port n]',
     options: {
       listen: { type: 'string' },
+      phone: { type: 'boolean' },
+      'websocket-port': { type: 'string' },
+      'webapp-port': { type: 'string' },
       'api-port': { type: 'string' },
       bootstrap: { type: 'string', multiple: true },
       network: { type: 'string' },
