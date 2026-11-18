@@ -71,6 +71,8 @@ test('defaultConfig returns the documented defaults', () => {
       serveUi: true,
       allowRemote: false,
     },
+    websocket: { enabled: false, host: '0.0.0.0', port: 47471, allowedOrigins: [] },
+    webapp: { enabled: false, host: '0.0.0.0', port: 47490, allowedHosts: [] },
     discovery: {
       multicast: { enabled: true, group: '239.255.67.78', port: 47470, interface: null },
       bootstrap: [],
@@ -706,6 +708,10 @@ test('loadConfig maps every documented environment variable', async (t) => {
     CLAWNET_API_HOST: '0.0.0.0',
     CLAWNET_API_PORT: '8080',
     CLAWNET_API_ALLOW_REMOTE: 'TRUE',
+    CLAWNET_WEBSOCKET: 'yes',
+    CLAWNET_WEBSOCKET_PORT: '9001',
+    CLAWNET_WEBAPP: 'on',
+    CLAWNET_WEBAPP_PORT: '9002',
     CLAWNET_BOOTSTRAP: 'tcp://192.0.2.9:1,,tcp://[2001:db8::1]:2,',
     CLAWNET_MULTICAST: 'off',
     CLAWNET_PEX: '0',
@@ -730,6 +736,8 @@ test('loadConfig maps every documented environment variable', async (t) => {
   assert.equal(config.api.host, '0.0.0.0');
   assert.equal(config.api.port, 8080);
   assert.equal(config.api.allowRemote, true);
+  assert.deepEqual(config.websocket, { enabled: true, host: '0.0.0.0', port: 9001, allowedOrigins: [] });
+  assert.deepEqual(config.webapp, { enabled: true, host: '0.0.0.0', port: 9002, allowedHosts: [] });
   assert.deepEqual(config.discovery.bootstrap, ['tcp://192.0.2.9:1', 'tcp://[2001:db8::1]:2']);
   assert.equal(config.discovery.multicast.enabled, false);
   assert.equal(config.discovery.pex, false);
@@ -1085,4 +1093,23 @@ test('resolveDataDir rejects unusable input', () => {
       configError('dataDir', /no home directory; set CLAWNET_HOME/),
     );
   }
+});
+
+test('the phone transports are off by default and checked against each other', () => {
+  const defaults = validateConfig({});
+  assert.equal(defaults.websocket.enabled, false);
+  assert.equal(defaults.webapp.enabled, false);
+  assert.throws(() => validateConfig({ webapp: { enabled: true } }), (err) => err.path === 'webapp.enabled');
+  assert.throws(() => validateConfig({ websocket: { enabled: true, port: 47470 } }), (err) => err.path === 'websocket.port');
+  assert.throws(() => validateConfig({ websocket: { enabled: true, port: 47480 } }), (err) => err.path === 'websocket.port');
+  assert.throws(
+    () => validateConfig({ websocket: { enabled: true, port: 5000 }, webapp: { enabled: true, port: 5000 } }),
+    (err) => err.path === 'webapp.port',
+  );
+  assert.throws(() => validateConfig({ websocket: { allowedOrigins: ['*'] } }), (err) => err.path === 'websocket.allowedOrigins[0]');
+  assert.throws(() => validateConfig({ webapp: { allowedHosts: ['pc.local:80'] } }), (err) => err.path === 'webapp.allowedHosts[0]');
+  // Disabled listeners do not claim their ports, and port 0 never clashes.
+  assert.equal(validateConfig({ websocket: { port: 47470 } }).websocket.port, 47470);
+  const both = validateConfig({ listen: { port: 0 }, websocket: { enabled: true, port: 0 }, webapp: { enabled: true, port: 0, allowedHosts: ['My-PC'] } });
+  assert.deepEqual(both.webapp.allowedHosts, ['my-pc']);
 });

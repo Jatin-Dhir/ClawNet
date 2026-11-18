@@ -50,6 +50,29 @@ import { Limits } from './wire/types.js';
  */
 
 /**
+ * @typedef {object} WebSocketConfig
+ * @property {boolean} enabled  accept links over WebSocket, the transport browsers can use
+ *   (DESIGN.md section 16). Off by default: it opens a second port to the network.
+ * @property {string} host      address the WebSocket listener binds. Default "0.0.0.0".
+ * @property {number} port      WebSocket port, 0..65535; 0 lets the OS choose. Default 47471.
+ * @property {string[]} allowedOrigins exact web origins ("http://192.168.1.20:8000"), besides
+ *   this node's own web app, whose pages may link through this port. A connection without
+ *   an Origin header (not a browser) is always admitted, like a TCP connection. Default [].
+ */
+
+/**
+ * @typedef {object} WebAppConfig
+ * @property {boolean} enabled  serve the phone web app to devices on the network
+ *   (DESIGN.md section 16). Needs `websocket.enabled`: the app links through it. Off by
+ *   default.
+ * @property {string} host      address the web app server binds. Default "0.0.0.0".
+ * @property {number} port      web app port, 0..65535; 0 lets the OS choose. Default 47490.
+ * @property {string[]} allowedHosts host names, besides IP addresses, `localhost` and names
+ *   under `.local` or `.home.arpa`, that phones may use in the app's address, lower case.
+ *   Others are refused, which defeats DNS rebinding. Default [].
+ */
+
+/**
  * @typedef {object} MulticastConfig
  * @property {boolean} enabled        send and receive LAN beacons. Default true.
  * @property {string} group           IPv4 multicast group (224.0.0.0/4). Default "239.255.67.78".
@@ -208,6 +231,8 @@ import { Limits } from './wire/types.js';
  * @property {string[]} advertise          addresses ("tcp://host:port") announced to
  *   other nodes in addition to observed ones; at most 16. Default [].
  * @property {ApiConfig} api               local control API.
+ * @property {WebSocketConfig} websocket   links from browsers.
+ * @property {WebAppConfig} webapp         the phone web app.
  * @property {DiscoveryConfig} discovery   how peers are found.
  * @property {PeersConfig} peers           peer count targets and access lists.
  * @property {CapsConfig} caps             capabilities this node advertises.
@@ -279,6 +304,18 @@ export function defaultConfig() {
       corsOrigins: [],
       serveUi: true,
       allowRemote: false,
+    },
+    websocket: {
+      enabled: false,
+      host: '0.0.0.0',
+      port: 47471,
+      allowedOrigins: [],
+    },
+    webapp: {
+      enabled: false,
+      host: '0.0.0.0',
+      port: 47490,
+      allowedHosts: [],
     },
     discovery: {
       multicast: { enabled: true, group: '239.255.67.78', port: 47470, interface: null },
@@ -560,6 +597,18 @@ const checkConfig = section({
     serveUi: boolean,
     allowRemote: boolean,
   }),
+  websocket: section({
+    enabled: boolean,
+    host: bindHost,
+    port,
+    allowedOrigins: list(origin, 64),
+  }),
+  webapp: section({
+    enabled: boolean,
+    host: bindHost,
+    port,
+    allowedHosts: list(hostHeader, 64),
+  }),
   discovery: section({
     multicast: section({
       enabled: boolean,
@@ -646,7 +695,7 @@ function isLoopbackHost(host) {
 
 /** Checks that involve more than one setting. Runs on an already normalized config. */
 function checkCrossField(config) {
-  const { timers, peers, api, listen, mailbox } = config;
+  const { timers, peers, api, listen, mailbox, websocket, webapp } = config;
 
   if (timers.peerTimeoutMs <= timers.keepaliveMs) {
     throw fail('timers.peerTimeoutMs', 'must be greater than timers.keepaliveMs');
@@ -697,6 +746,19 @@ function checkCrossField(config) {
   }
   if (api.enabled && api.port !== 0 && api.port === listen.port) {
     throw fail('api.port', 'must differ from listen.port');
+  }
+  if (webapp.enabled && !websocket.enabled) {
+    throw fail('webapp.enabled', 'needs websocket.enabled: the web app links through the WebSocket port');
+  }
+  // Every listener that is switched on needs a port of its own (0 lets the OS choose).
+  const taken = [['listen.port', listen.port]];
+  if (api.enabled) taken.push(['api.port', api.port]);
+  if (websocket.enabled) taken.push(['websocket.port', websocket.port]);
+  if (webapp.enabled) taken.push(['webapp.port', webapp.port]);
+  for (let i = 1; i < taken.length; i += 1) {
+    const [name, value] = taken[i];
+    const clash = taken.slice(0, i).find(([, other]) => value !== 0 && other === value);
+    if (clash !== undefined) throw fail(name, `must differ from ${clash[0]}`);
   }
 }
 
@@ -796,6 +858,10 @@ const ENV_SETTINGS = Object.freeze({
   CLAWNET_API_HOST: [['api', 'host'], envText],
   CLAWNET_API_PORT: [['api', 'port'], envInteger],
   CLAWNET_API_ALLOW_REMOTE: [['api', 'allowRemote'], envBoolean],
+  CLAWNET_WEBSOCKET: [['websocket', 'enabled'], envBoolean],
+  CLAWNET_WEBSOCKET_PORT: [['websocket', 'port'], envInteger],
+  CLAWNET_WEBAPP: [['webapp', 'enabled'], envBoolean],
+  CLAWNET_WEBAPP_PORT: [['webapp', 'port'], envInteger],
   CLAWNET_BOOTSTRAP: [['discovery', 'bootstrap'], envList],
   CLAWNET_MULTICAST: [['discovery', 'multicast', 'enabled'], envBoolean],
   CLAWNET_PEX: [['discovery', 'pex'], envBoolean],

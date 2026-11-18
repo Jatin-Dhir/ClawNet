@@ -86,7 +86,9 @@ test('two managers link, see the right PeerInfo, exchange packets by NodeId, and
   assert.deepEqual(a.pm.observedAddresses(), ['127.0.0.1']);
 
   const [upA] = of(a, 'link.up');
-  assert.deepEqual(Object.keys(upA).sort(), ['addr', 'agent', 'caps', 'cost', 'direction', 'linkId', 'peer', 'rttMs']);
+  assert.deepEqual(Object.keys(upA).sort(), ['addr', 'agent', 'caps', 'cost', 'direction', 'linkId', 'peer', 'rttMs', 'transport']);
+  assert.equal(upA.transport, 'tcp');
+  assert.equal(fromB.transport, 'tcp');
   assert.equal(upA.peer, b.id);
 
   assert.equal(a.pm.send(b.id, { type: PacketType.GOSSIP, header: { hello: 'b' } }), true);

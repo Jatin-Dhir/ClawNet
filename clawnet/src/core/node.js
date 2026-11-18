@@ -40,12 +40,13 @@ import { EventBus } from './events.js';
 import { ConversationStore } from './messaging/conversations.js';
 import { ReliableMessenger } from './messaging/reliable.js';
 import { AddressBook } from './peer/address-book.js';
-import { DEFAULT_AGENT, PeerManager } from './peer/peer-manager.js';
+import { DEFAULT_AGENT, MAX_PENDING_INBOUND, PeerManager } from './peer/peer-manager.js';
 import { Forwarder } from './routing/forwarder.js';
 import { Lsdb } from './routing/lsdb.js';
 import { MAX_LINK_COST } from './routing/metric.js';
 import { computeRoutes } from './routing/spf.js';
 import { NodeStorage } from './storage.js';
+import { listenWebSocket, originPolicy } from './transport/websocket.js';
 import { canonicalBytes } from './wire/canonical.js';
 import { formatAddress, isNodeId, validateCast, validateLsa, validateReceipt } from './wire/schema.js';
 import { Limits, PacketType, RecordType } from './wire/types.js';
@@ -1111,6 +1112,9 @@ export class ClawNode {
   #sync = null;
   #datasets = [];
   #listen = null;
+  /** The WebSocket listener (DESIGN.md section 16), when `websocket.enabled`. */
+  #ws = null;
+  #wsRefused = { at: -Infinity, suppressed: 0 };
   #lockPath = null;
   #runtimePath = null;
   #discoveryRunning = false;
@@ -1219,6 +1223,11 @@ export class ClawNode {
   /** @returns {{ host: string, port: number } | null} the bound peer listener */
   get listenAddress() {
     return this.#listen === null ? null : { ...this.#listen };
+  }
+
+  /** @returns {{ host: string, port: number } | null} the bound WebSocket listener, if any */
+  get websocketAddress() {
+    return this.#ws === null ? null : { ...this.#ws.address };
   }
 
   // ===================================================================== lifecycle
@@ -1351,8 +1360,9 @@ export class ClawNode {
     this.#router.start();
     this.#pex.refresh();
 
-    // 8. The listener.
+    // 8. The listeners: TCP, and WebSocket when it is switched on.
     this.#listen = await this.#peers.start();
+    if (config.websocket.enabled) await this.#startWebSocket();
 
     // 9. Services: start; then runtime.json.
     this.#live = true;
@@ -1378,6 +1388,44 @@ export class ClawNode {
     this.#timers.every(() => this.#sync.tick(), config.timers.syncIntervalMs, 'sync.tick');
     this.#timers.every(() => this.#trafficSample(), TRAFFIC_SAMPLE_MS, 'traffic.sample');
     this.#timers.every(() => this.#maintainDiscovery(), config.timers.redialMinMs, 'discovery');
+  }
+
+  /**
+   * Accept links from browsers (DESIGN.md section 16). Each upgraded connection goes to the
+   * peer manager exactly as an accepted TCP socket does.
+   */
+  async #startWebSocket() {
+    const { websocket, webapp, timers, peers } = this.#config;
+    try {
+      this.#ws = await listenWebSocket({
+        host: websocket.host,
+        port: websocket.port,
+        onStream: (stream) => this.#peers.accept(stream, { transport: 'ws' }),
+        checkOrigin: originPolicy({
+          allowedOrigins: websocket.allowedOrigins,
+          allowedHosts: webapp.allowedHosts,
+          webappPort: () => (webapp.enabled ? this.service('webapp')?.port ?? null : null),
+        }),
+        onError: (error) => this.#reportError('websocket', error),
+        onRefused: (info) => this.#websocketRefused(info),
+        handshakeTimeoutMs: timers.handshakeTimeoutMs,
+        maxConnections: peers.max + MAX_PENDING_INBOUND,
+      });
+    } catch (error) {
+      throw new StateError(`websocket-listen-failed: ${error.message.replace(/^listen-failed: /, '')}`, { cause: error });
+    }
+  }
+
+  /** At most one `websocket.refused` event a second, so a scan cannot flood the bus. */
+  #websocketRefused({ ip, status, reason }) {
+    const now = performance.now();
+    if (now - this.#wsRefused.at < 1000) {
+      this.#wsRefused.suppressed += 1;
+      return;
+    }
+    const suppressed = this.#wsRefused.suppressed;
+    this.#wsRefused = { at: now, suppressed: 0 };
+    this.#events.emit('websocket.refused', { ip, status, reason, suppressed });
   }
 
   async #takeLock() {
@@ -1694,7 +1742,9 @@ export class ClawNode {
     this.#live = false;
     for (const subscription of this.#routeListeners) subscription.cancel();
     this.#routeListeners.clear();
-    // 4. Push batched gossip, then close every link with BYE "shutdown".
+    // 4. No more links from browsers; push batched gossip, then close every link with
+    // BYE "shutdown" (WebSocket links included: the peer manager owns them).
+    if (this.#ws !== null) await step('websocket', () => this.#ws.close());
     if (this.#sync !== null) await step('sync.flush', () => this.#sync.flush());
     if (this.#peers !== null) await step('peers', () => this.#peers.stop());
     // 5. Timers.
@@ -2068,6 +2118,7 @@ export class ClawNode {
       uptimeMs: this.#startedAt === null ? 0 : Math.max(0, now - this.#startedAt),
       listen: this.#listenText(),
       addresses: this.#ownAddresses(),
+      phone: this.#phoneStatus(),
       caps: { ...this.#config.caps },
       peers: {
         linked: peers?.size ?? 0,
@@ -2092,6 +2143,25 @@ export class ClawNode {
       services: this.#services.map((service) => service.name),
       asOf: { boot: this.#boot, seq: lastSeq },
     };
+  }
+
+  /**
+   * Where phones reach this node (DESIGN.md section 16): the WebSocket listener and the
+   * addresses of the web app, or nulls when they are switched off.
+   *
+   * @returns {{ websocket: string | null, webapp: string[] | null }}
+   */
+  #phoneStatus() {
+    const ws = this.#ws?.address ?? null;
+    let webapp = null;
+    if (this.#config.webapp.enabled) {
+      try {
+        webapp = this.service('webapp')?.urls() ?? [];
+      } catch {
+        webapp = [];
+      }
+    }
+    return { websocket: ws === null ? null : `${ws.host.includes(':') ? `[${ws.host}]` : ws.host}:${ws.port}`, webapp };
   }
 
   /** @returns {object} the API.md 6.2 identity document; never a private key */

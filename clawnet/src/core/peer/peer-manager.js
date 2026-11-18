@@ -89,7 +89,10 @@ const NONCE_BYTES = 8;
  * @property {string} id
  * @property {string} linkId
  * @property {"in" | "out"} direction
- * @property {string} addr          remote address ("tcp://host:port")
+ * @property {"tcp" | "ws"} transport how the link is carried: TCP, or a WebSocket from a
+ *   browser (transport/websocket.js); everything above the byte stream is the same
+ * @property {string} addr          remote address ("tcp://host:port"; for a WebSocket link,
+ *   the TCP connection the WebSocket runs over)
  * @property {string} agent
  * @property {{ relay: boolean, mailbox: boolean, transit: boolean }} caps
  * @property {string[]} listen      addresses the peer announced
@@ -399,6 +402,22 @@ export class PeerManager {
   }
 
   /**
+   * Accept a connected byte stream from another transport as an inbound link (DESIGN.md
+   * section 16). It goes through exactly what an accepted TCP socket goes through: the
+   * per-address and total limits on handshakes in progress, the Noise handshake with its
+   * deadline, the identity-card checks, the admission policy and, once linked, the same
+   * budgets and keepalive. A stream refused by a limit is destroyed.
+   *
+   * @param {import('node:stream').Duplex & { remoteAddress?: string, remotePort?: number }} stream
+   * @param {{ transport?: "tcp" | "ws" }} [options] label for the link; default "tcp"
+   * @returns {void}
+   */
+  accept(stream, { transport = 'tcp' } = {}) {
+    if (transport !== 'tcp' && transport !== 'ws') throw new ConfigError('transport must be "tcp" or "ws"');
+    this.#onSocket(stream, transport);
+  }
+
+  /**
    * Close the link to a node.
    *
    * @param {string} id
@@ -602,7 +621,7 @@ export class PeerManager {
 
   // ------------------------------------------------------------------ inbound
 
-  #onSocket(socket) {
+  #onSocket(socket, transport = 'tcp') {
     const ip = normalizeIp(socket.remoteAddress);
     const fromIp = this.#pendingPerIp.get(ip) ?? 0;
     if (
@@ -620,7 +639,7 @@ export class PeerManager {
     const startedAt = performance.now();
     const addr = socketAddress(ip, socket.remotePort);
     establishChannel(this.#channelOptions(socket, false, ctx => this.#authorize(ctx, { direction: 'in', startedAt })))
-      .then(channel => this.#adopt(channel, { direction: 'in', addr, dialedAddr: null, startedAt }))
+      .then(channel => this.#adopt(channel, { direction: 'in', addr, dialedAddr: null, startedAt, transport }))
       .catch(err => {
         const reason = err instanceof HandshakeError ? err.reason : 'internal';
         if (REFUSALS.has(reason)) {
@@ -692,7 +711,7 @@ export class PeerManager {
       this.#ipBackoff.delete(ip);
       // Bound even if this link loses a duplicate tie-break, so the address is not redialed.
       this.#book.bind(addr, channel.remoteId);
-      const link = this.#adopt(channel, { direction: 'out', addr, dialedAddr: addr, startedAt });
+      const link = this.#adopt(channel, { direction: 'out', addr, dialedAddr: addr, startedAt, transport: 'tcp' });
       if (link === null) throw new HandshakeError('shutdown', 'stopping');
       return link;
     } finally {
@@ -882,7 +901,7 @@ export class PeerManager {
   // ------------------------------------------------------------------ links
 
   /** @returns {object | null} the link now active for that node, or null when stopping */
-  #adopt(channel, { direction, addr, dialedAddr, startedAt }) {
+  #adopt(channel, { direction, addr, dialedAddr, startedAt, transport }) {
     if (this.#state !== 'running') {
       channel.close('shutdown');
       return null;
@@ -895,6 +914,7 @@ export class PeerManager {
       linkId: String(++this.#linkCounter),
       channel,
       direction,
+      transport,
       addr,
       dialedAddr,
       startedAt,
@@ -962,7 +982,7 @@ export class PeerManager {
     if (!replacement) {
       this.#callback('onLinkUp', () => this.#onLinkUp(info));
       this.#emit('link.up', {
-        peer: id, linkId: link.linkId, direction, addr, agent: payload.agent, caps: payload.caps,
+        peer: id, linkId: link.linkId, direction, transport, addr, agent: payload.agent, caps: payload.caps,
         rttMs: link.metric.srtt, cost: link.metric.cost,
       });
     }
@@ -1163,6 +1183,7 @@ export class PeerManager {
       id: link.id,
       linkId: link.linkId,
       direction: link.direction,
+      transport: link.transport,
       addr: link.addr,
       agent: payload.agent,
       caps: { ...payload.caps },

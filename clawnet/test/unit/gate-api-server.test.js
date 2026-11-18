@@ -422,8 +422,9 @@ test('status, identity, peers, topology and routes have the documented shape', a
   const status = (await authed('/api/v1/status')).json;
   assert.deepEqual(Object.keys(status).sort(), [
     'addresses', 'agent', 'asOf', 'boot', 'caps', 'events', 'listen', 'messaging', 'networkId', 'nodeId', 'now', 'peers',
-    'routing', 'services', 'shortId', 'startedAt', 'state', 'uptimeMs',
+    'phone', 'routing', 'services', 'shortId', 'startedAt', 'state', 'uptimeMs',
   ]);
+  assert.deepEqual(status.phone, { websocket: null, webapp: null });
   assert.equal(status.state, 'running');
   assert.equal(status.nodeId, shared.node.id);
   assert.equal(status.shortId, shared.node.id.slice(0, 8));
