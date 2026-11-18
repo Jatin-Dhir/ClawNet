@@ -226,3 +226,86 @@ does. Single-node start-up, configuration and running as a service are in
 4. Build mailbox custody, so peers that are never online together can exchange messages.
 5. CLI commands for channels and files; identity-card rotation; channel-key rotation.
 6. Decide whether the engine should move to its own repository.
+
+## 14. Phone node (18 November 2026)
+
+Built in a separate session (on Opus), on this branch, under `clawnet/` only, plus this
+section. It was committed with the hook's audit step skipped, with the owner's
+permission; see "Commits" below.
+
+**What it is.** A phone can now be a ClawNet node of its own through a web app: no App
+Store, no Mac, one build for iPhone (Safari) and Android (Chrome). A computer node started
+with `clawnet start --phone` serves the app on port 47490 and accepts the phone's link on a
+WebSocket port, 47471; both are off by default. The phone creates its own identity, links
+to that computer over the Wi-Fi, lists the nodes it can reach and sends and receives
+end-to-end encrypted messages while the app is open. The control API is unchanged: it stays
+on 127.0.0.1 behind its token, and the phone is a node, not a remote control.
+
+- `src/core/transport/websocket.js`: an RFC 6455 server on `node:http`'s upgrade event
+  (720 lines, no dependency). WebSocket links go through the same Noise handshake, card
+  checks, admission rules and rate limits as TCP links; browsers are admitted only from
+  this node's own app or listed origins (`PROTOCOL.md` section 3.7).
+- `web/core/`: a second implementation of what a phone needs (identities, every Noise
+  pattern, links, ClawSync, sealed messages, reliable messaging) on the audited noble
+  libraries 2.4.0, vendored and pinned by hash (`clawnet/web/vendor/README.md`).
+- `web/app/`: the app itself, served by `src/gate/webapp-server.js`; designed on the
+  console's art direction.
+
+**Tested, on one Windows machine over loopback only:**
+
+- Full suite on the final tree: 1,307 tests, 1,303 passed, 0 failed, 4 skipped (the POSIX
+  permission tests); 1,193 before this work. The 95 tests of the phone-related files
+  passed three more times in a row. `npx eslint clawnet`: no errors, no warnings.
+- The browser code against the engine: the published Noise vectors, an `XXpsk0`
+  handshake byte-identical to the engine's, and cross-checks of every encoding,
+  signature, check and sealed message.
+- Interoperability: the browser code, run under Node, links to real nodes over WebSocket
+  and messages pass both ways, also through a second node; a right and a wrong network
+  key, a blocked phone, a phone on another network, and probes (6 tests).
+- The app, in the Claude desktop app's Chromium browser at 375 by 812 pixels against two
+  nodes on the same machine: set-up, the node list, a conversation two hops away
+  (delivered, then answered) and "This phone".
+
+**Tried on a real phone, once.** Later the same morning the owner set the app up on their
+iPhone, over their home Wi-Fi, against a node on their PC. The PC's node saw an inbound
+WebSocket link from the phone's address, the phone's "Hello" arrived, and the PC's reply
+was marked delivered, which needs the phone's acknowledgement. The try showed one problem,
+now fixed: the start-up hint listed the addresses of virtual adapters (WSL, VMware) next to
+the Wi-Fi one, so it now names each adapter and sets the virtual ones apart.
+
+**Not tested:** Android, another iPhone or iOS version, hostile cases against a phone,
+the Windows firewall prompt (this PC already allowed Node.js), a screen reader, or a phone
+messaging a node on a second computer.
+
+**Reviews.** Two Claude Sonnet agents reviewed the new code: security (10 findings: the
+two high ones, a remote crash and a memory flood on the WebSocket port, are fixed with
+tests; 4 medium fixed or partly fixed; what remains open is listed) and interface (two
+blocking findings fixed). Everything is in `clawnet/docs/REVIEW.md`. Cost: about 244,000
+Sonnet tokens for the security review and about 124,000 for the interface review.
+
+**Commits, and why the hook's audit step was skipped for them.** The audit step of the
+commit hook was skipped for the phone-node commits (`git commit --no-verify`), with the
+owner's permission: asked "Allow the phone session to commit with that security check
+skipped?", they answered "Yes, allow it" (18 November 2026). The hook runs the website's
+`npm audit`, which fails on 11 high findings that all come from one advisory in
+`picomatch` (GHSA-fc5q-39xc-vjpf). The newest published picomatch, 4.0.7, is still
+affected, so there is no fixed version to move to, and picomatch reaches this repository
+only through the website's build tools (Tailwind and Vite); the engine has no
+dependencies. The hook's other step was run before each of these commits and passed:
+`npm run lint` at the repository root (0 errors; the website's 23 old warnings remain) and
+`npx eslint clawnet` (no errors, no warnings). The permission covers these commits only,
+not later work once a fixed picomatch exists; the website's `package.json` and the hook
+were not changed. There are eight commits, from "Phone node: vendor the noble cryptography
+libraries, pinned by hash" to the one that adds this section; the full suite was run on
+the final tree, not on each commit in between.
+
+**Limits, by design for now.** The phone works only while the app is open and on screen,
+only through a computer node on the same Wi-Fi (no phone-to-phone link), and the page
+arrives over plain HTTP, so someone who can tamper with that Wi-Fi's traffic could change
+the app. Its keys live unencrypted in the phone's browser storage, tied to the computer's
+address, with no backup (`clawnet/docs/THREAT_MODEL.md` section 3.7).
+
+**Next steps.** Try Android, and a phone messaging through two computers. Then: export and
+import of a phone's identity; HTTPS for the app with a certificate the phone trusts; a
+decision on filtering the new ports by source address; native apps for background
+operation; and links without Wi-Fi (Bluetooth, Wi-Fi Direct, LoRa), all out of scope here.
