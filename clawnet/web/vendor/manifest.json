@@ -1,0 +1,144 @@
+{
+  "about": "Pinned copies of the noble cryptography libraries used by the ClawNet web core. Written by scripts/vendor-noble.js; do not edit by hand. See README.md.",
+  "packages": [
+    {
+      "name": "@noble/hashes",
+      "version": "2.4.0",
+      "integrity": "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==",
+      "license": "MIT",
+      "dir": "noble-hashes",
+      "files": [
+        {
+          "path": "noble-hashes/LICENSE",
+          "sha256": "4f221aee6e072336700c408c68ab3b96a3fc09f6aebe6f48f1bd99e5ef13faec"
+        },
+        {
+          "path": "noble-hashes/_md.js",
+          "sha256": "3721da46f8987193d9e4f05ad7f3053a379de9a4abdb13bc7c40f4e0ff7090f9",
+          "originalSha256": "60cf3010fda89e3e4d3f0e7ff1ce249e9c467f34b4fd41b6fd6101d9f69be763"
+        },
+        {
+          "path": "noble-hashes/_u64.js",
+          "sha256": "22feae2373c8f8ab2c14e4efd1ce928b078d6f1ccc5fcb9e68496b4a4d86cc7c",
+          "originalSha256": "b09da8c07fe8187c07649494cdb7cd0bcf13df90b506a9473d19e4d5f8c2e102"
+        },
+        {
+          "path": "noble-hashes/hkdf.js",
+          "sha256": "d5f5b82adb8e9236b51af09029db933d5a0476b079ea280914b32e9cea56f3bd",
+          "originalSha256": "ccb942a8008f974018965eeb1e33b8f4739bf767c6f95f2ceb06f5873a302f67"
+        },
+        {
+          "path": "noble-hashes/hmac.js",
+          "sha256": "1df39c4f9802fb6401fb80c186b5e54bf36be6775ea7eda3ca6355f693f624ec",
+          "originalSha256": "fec9f8f3aeda785ea2de91cc4c059d54ef98196261c026c43f48341007ae52c9"
+        },
+        {
+          "path": "noble-hashes/sha2.js",
+          "sha256": "9aad78ee056b0edbb5048a14cc4c3ca101dcd9c8e7ec41413aeccf7200e796a5",
+          "originalSha256": "471746bba6ec4c6238ca41358d1d3b40b6ff31cf3363f0b4d550c649c1a8e83b"
+        },
+        {
+          "path": "noble-hashes/utils.js",
+          "sha256": "33f00204be4b8024b2a170e788958a61931324d3e2edecdf2dfca0c2d100f88c",
+          "originalSha256": "037ad49adb78168b6b699598fd33f85f7877456b1d28b4d032e2a1a16807947c"
+        }
+      ]
+    },
+    {
+      "name": "@noble/curves",
+      "version": "2.4.0",
+      "integrity": "sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==",
+      "license": "MIT",
+      "dir": "noble-curves",
+      "files": [
+        {
+          "path": "noble-curves/LICENSE",
+          "sha256": "4f221aee6e072336700c408c68ab3b96a3fc09f6aebe6f48f1bd99e5ef13faec"
+        },
+        {
+          "path": "noble-curves/abstract/curve.js",
+          "sha256": "23b4e5054c805eb93026e998d77e380f86aff55f8d435f90f8219cfedf2d24ce",
+          "originalSha256": "dbaeee3b41ff47efb76b78e14170fe4dda7c7ecdc387c402f16c5118e0bac356"
+        },
+        {
+          "path": "noble-curves/abstract/edwards.js",
+          "sha256": "bc11e7931064299426e796970b21a0405d07a0519780ab84663bbb7c5c949d25",
+          "originalSha256": "f24a9c221a549a8fff259eb8f245ab0dc17679b13c532c3970d91acc4df9fffd"
+        },
+        {
+          "path": "noble-curves/abstract/fft.js",
+          "sha256": "8bf0892dcdd648b29661fb91ddafe70f12c4478333a2bfc3f395380ffc382093",
+          "originalSha256": "a4b2ff7ca33f4acc85d61f0e83ec3303c3f6b38ecc19b20d0f6462d820e518cf"
+        },
+        {
+          "path": "noble-curves/abstract/frost.js",
+          "sha256": "28f7d1b2c29aa64c574640df837933c967f61e6532137783585224ad9172466c",
+          "originalSha256": "9a95f1fdf7e17b9d93a16049db675ee2967ed2a04cf59b1bd981d4662acbedf5"
+        },
+        {
+          "path": "noble-curves/abstract/hash-to-curve.js",
+          "sha256": "c5f6f32b066542880112b7c0e4b1381acbec2072198151bd560d0359047fc2a6",
+          "originalSha256": "e3c97e7d0827b728b14e3311ed11d8e386d8a70d8fc77e0b9fd2a3090f19d955"
+        },
+        {
+          "path": "noble-curves/abstract/modular.js",
+          "sha256": "58ddb9b602db5d633774eb982fea96e42d9c2c90e49018d9b5265f062fac023f",
+          "originalSha256": "9ced3aa10598277a735e54f7b61d88e929d565da884ba5385f9006ebb3b6aab2"
+        },
+        {
+          "path": "noble-curves/abstract/montgomery.js",
+          "sha256": "4edc2d382aeb61a18e2e44d9b28d86378297d92faeea793ed96d17e23f573c6c",
+          "originalSha256": "cdafa8816dad5a24475ec51952c5f71fdd5d1b46880ab982694c4f8ff605fc46"
+        },
+        {
+          "path": "noble-curves/abstract/oprf.js",
+          "sha256": "718289a155f5ac4327a74e7652697e9894941889b416705b65fea41700b85317",
+          "originalSha256": "2ca36b3e4930092db1f91559410e86975816c036e248067bc65a8055aa1c504c"
+        },
+        {
+          "path": "noble-curves/ed25519.js",
+          "sha256": "91e0a1283a88f0427a47a70e52230cd6f6df9bcf22028b2549e25e45d066ade7",
+          "originalSha256": "e13f6c50c36feb0d18bf7986d5f881bcefb5f1f5b16de3cc5ee7693254c7a0b5"
+        },
+        {
+          "path": "noble-curves/utils.js",
+          "sha256": "fd06a80ded2bbe00fe7e200ef98a815c92e071bb30dd1b6a7dadc57d10826e52",
+          "originalSha256": "be9ff86aef76419376e4d66cf01a134f3117f1f8dd62d81f1b79100145503367"
+        }
+      ]
+    },
+    {
+      "name": "@noble/ciphers",
+      "version": "2.4.0",
+      "integrity": "sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==",
+      "license": "MIT",
+      "dir": "noble-ciphers",
+      "files": [
+        {
+          "path": "noble-ciphers/LICENSE",
+          "sha256": "f36671a5487c9c5050efacb58011c37c24c55a889803cb036cf9d9a6347c1e2d"
+        },
+        {
+          "path": "noble-ciphers/_arx.js",
+          "sha256": "b6babea4ce5b3f21f95e0b49cdd2bddcf4ca9fece682dbd4c98fddb2203dce92",
+          "originalSha256": "ead142ba410404c0698bb80e0d6f77780799bb77a9e3b098cf0f9fca1c486e37"
+        },
+        {
+          "path": "noble-ciphers/_poly1305.js",
+          "sha256": "81e19c014dfbf898b1bd66b8beb8f39fcab4fc65091e1f4b5aab1b2120afc6af",
+          "originalSha256": "5d2afd73b40dbafb7b6740c6e6388e7123c79a4e57306861b28c5734925fa84d"
+        },
+        {
+          "path": "noble-ciphers/chacha.js",
+          "sha256": "b00c075ea032acaeed1dffedfdee4088222684f2dd15cad5b39b11ef8057f1fd",
+          "originalSha256": "5f1c00575e227b75163f4bac50b79442dec50ee3047c46c18887808ba8af0a69"
+        },
+        {
+          "path": "noble-ciphers/utils.js",
+          "sha256": "491f6ce151fbee95b5ca8ffe16552b81f31dd3299cf442dd7543e045ea94496a",
+          "originalSha256": "a443ec1f60d1aaa25d1b7d8c102d33c0e8e6d683ada1ad17be9c32e69170ff95"
+        }
+      ]
+    }
+  ]
+}
