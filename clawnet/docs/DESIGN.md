@@ -416,3 +416,60 @@ this section conflicts with anything above, or with `ARCHITECTURE.md`, this sect
 - Sender anonymity is not provided (see section 6).
 - Open networks have no defence against one participant creating many identities beyond
   the caps in item 19.
+
+## 16. Phones: links over WebSocket and the web app
+
+Added on 18 November 2026. A phone becomes a node by opening a web page, without an app
+store. Everything in sections 1 to 15 applies to it; this section records what is
+different and why.
+
+1. **A phone is a node, not a remote control.** The browser holds its own identity (three
+   keys, made in the browser), runs the link handshake, takes part in ClawSync for `lsa`
+   and `peer`, publishes its own LSA and peer record, and seals and opens end-to-end
+   messages itself. The computer it links through forwards its packets like any
+   neighbour's and cannot read them. The control API is untouched: it stays on 127.0.0.1
+   with its token, and nothing a phone can reach leads to it.
+2. **WebSocket carries the link's byte stream unchanged** (PROTOCOL.md section 3.7). A
+   browser cannot open a TCP socket. The engine accepts WebSocket connections on an
+   opt-in port (`websocket.enabled`, port 47471) and hands each one to the peer manager
+   as if it were an accepted TCP socket (`PeerManager#accept`): the same Noise XX or
+   XXpsk0 handshake, card checks, admission policy, per-address and total handshake
+   limits, packet budgets and keepalive. Message boundaries carry no meaning. Browsers
+   only dial out; nodes keep linking to each other over TCP.
+3. **The RFC 6455 server is written here, not taken as a dependency.** It is about 600
+   lines on `node:http`'s upgrade event, tested against Node's own WebSocket client and a
+   raw client that sends malformed frames. The engine keeps zero runtime dependencies.
+4. **Browsers are told apart by `Origin`.** A connection without one is not a browser and
+   is treated exactly like a TCP connection. A browser's is admitted only from this
+   node's own web app (same host name, the web app's port) or an origin listed in
+   `websocket.allowedOrigins`, and the host name must be one an outsider cannot point at
+   this machine: an IP address, `localhost`, or a `.local` / `.home.arpa` name, plus
+   `webapp.allowedHosts`. Without this, any web page a person on the network visits could
+   use their browser to reach the port; the host rule defeats DNS rebinding.
+5. **The web app is served by the node on its own opt-in port** (`webapp.enabled`, port
+   47490), as static files read once at start, with a strict Content-Security-Policy.
+   `/config.json` tells the app the network id, whether a key is needed (never the key)
+   and the WebSocket port; it does not name the node, which a private network keeps from
+   non-members (15.4).
+6. **The browser code is a second implementation** (`web/core`), not the engine's modules
+   with shims. The engine is built on Node's Buffer and OpenSSL; a page served over plain
+   http is not a secure context, so WebCrypto is unavailable, and WebCrypto has no
+   ChaCha20-Poly1305 anyway. `web/core` uses the audited noble libraries (hashes, curves,
+   ciphers 2.4.0, vendored with pinned hashes, `web/vendor/README.md`) and shares only
+   `types.js`, `canonical.js` and `errors.js` with the engine. Compatibility is proven by
+   tests, not assumed: the published Noise vectors, XXpsk0 byte for byte against the
+   engine, cross-checks of every encoder, validator and envelope, sync between the two
+   implementations, and an interoperability suite in which the browser code, run under
+   Node.js, links to real nodes.
+7. **What a phone advertises.** `caps = { relay: false, mailbox: false, transit: false }`,
+   so no route passes through it; an empty address list (it cannot be dialed); its LSA
+   lists the one computer it links to, with the measured round-trip cost.
+8. **Limits, stated rather than hidden.** It works only while the page is open. It needs a
+   computer node on the same network to link through; two phones cannot link to each
+   other directly. The page and its code arrive over plain http, so someone who can
+   tamper with traffic on that network can change the app before it runs
+   (THREAT_MODEL.md). The keys live in the browser's storage on that phone, protected by
+   the phone's lock, not by a passphrase. Ed25519 verification in the browser (noble)
+   uses the cofactored equation and OpenSSL the cofactorless one: they agree on every
+   honest signature, and can disagree only on one built to differ, which a phone then
+   accepts or refuses alone, since it relays nothing.

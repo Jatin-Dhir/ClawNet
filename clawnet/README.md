@@ -33,6 +33,11 @@ from it.
   `console/` into `ui/`.
 - **Devnet.** `clawnet devnet` starts several real nodes, as separate processes, on one
   machine.
+- **Phones, through a web app.** `clawnet start --phone` lets a phone on the same Wi-Fi
+  join as a node of its own: the computer serves a web app (Safari on iPhone, Chrome on
+  Android) and accepts its links over WebSocket. The phone has its own keys and sends and
+  receives end-to-end encrypted messages while the app is open. Off by default; see "A
+  phone on your Wi-Fi" below.
 
 Not built: the mailbox (custody) service, which would hold messages for offline nodes
 (it is designed in `docs/ARCHITECTURE.md` section 8.3; until it exists, a message to an
@@ -43,8 +48,16 @@ and file transfer (use the API or the console); changing a passphrase or rotatin
 
 **Demonstrated.**
 
-- Unit tests of most modules, including hostile and malformed input (about 1,100 tests). The
+- Unit tests of most modules, including hostile and malformed input (about 1,300 tests). The
   link-state router has no unit tests of its own; it is exercised through real nodes.
+- The phone's browser code against the engine: published Noise vectors, a `Noise_XXpsk0`
+  handshake byte-identical to the engine's, cross-checks of every encoding and check, and
+  interoperability tests in which that code, run under Node, links to real nodes over
+  WebSocket and exchanges messages both ways. The app itself was clicked through in a
+  Chromium browser at phone size against nodes on the same machine.
+- **The phone app on a real phone, once.** On 18 November 2026 the owner set it up on their
+  iPhone over their home Wi-Fi, against a node on their PC: it linked, and a message went
+  each way, the reply acknowledged by the phone.
 - Integration tests that start several real nodes in one process, joined by real TCP sockets
   on `127.0.0.1`, through a loopback proxy that adds latency, cuts links and records the bytes
   on the wire. They check, for example, delivery across partitions, rerouting around failures,
@@ -65,8 +78,9 @@ and file transfer (use the API or the console); changing a passphrase or rotatin
 
 **Not demonstrated.**
 
-- **Any two machines talking to each other.** Every test, and every command above, ran on one
-  machine over loopback.
+- **Any two computers talking to each other.** Every test, and every command above, ran on
+  one machine over loopback. The only traffic between two devices recorded here is the one
+  phone try above.
 - **Real LAN multicast.** The beacon code is tested with a fake datagram socket; no test has
   sent a multicast datagram.
 - **NAT.** Not supported and not tested.
@@ -77,6 +91,8 @@ and file transfer (use the API or the console); changing a passphrase or rotatin
 - **An external security audit.** None has been done (`docs/THREAT_MODEL.md`).
 - Behaviour on Linux or macOS beyond what the CI runs show, and a real Ctrl+C in a console.
 - Any property of the console in Firefox or Safari, or on a phone.
+- **The phone app beyond that one try.** Not on Android, not on another iPhone, not with
+  a phone linked to one computer and messaging a node on another, and no hostile case.
 
 ## Requirements
 
@@ -101,7 +117,7 @@ node bin/clawnet.js -d <dir> start --listen 127.0.0.1:0 --api-port 0 --no-multic
 real node). `start` runs in the foreground and prints one line when ready:
 
 ```
-{"event":"ready","nodeId":"rg2z...fuhga","listen":"tcp://127.0.0.1:56902","api":"http://127.0.0.1:56903","dataDir":"..."}
+{"event":"ready","nodeId":"rg2z...fuhga","listen":"tcp://127.0.0.1:56902","api":"http://127.0.0.1:56903","phone":{"websocket":null,"webapp":null},"dataDir":"..."}
 ```
 
 In another shell:
@@ -164,6 +180,25 @@ removed from the address bar. Anyone who has that URL controls the node.
 **Stop the devnet.** `node bin/clawnet.js -d <dir>/node-0 stop` (and `node-1`, `node-2`);
 `devnet` exits when the last node has stopped.
 
+**A phone on your Wi-Fi.** Start a node with phone support:
+
+```
+node bin/clawnet.js -d <dir> start --phone
+```
+
+It prints, on standard error, the addresses a phone can open, such as
+`http://192.168.1.20:47490/`. Windows may ask whether Node.js may use the network: allow
+it on private networks. On the phone, on the same Wi-Fi, open that address; on an iPhone,
+add it to the home screen first (Share, Add to Home Screen) and set it up from there. The
+phone creates its own identity, links to the computer and lists the nodes it can reach.
+Send it a message from the computer with `send <phone's id> hello` (its id is under "This
+phone" in the app); its replies show in `inbox`. Limits: it works only while the app is
+open, only through a computer on the same Wi-Fi, and the page arrives over plain HTTP, so
+use it on a network you trust. If the phone cannot open the address, the usual causes
+(Windows treating the Wi-Fi as a public network, a guest network, a firewall rule refused
+earlier) are listed in `docs/OPERATIONS.md` section 6a; the security limits are in
+`docs/THREAT_MODEL.md` section 3.7.
+
 **The tests.**
 
 ```
@@ -181,7 +216,7 @@ change as the code does, so they are not recorded here.
 | --- | --- |
 | `src/core/crypto/` | identities, Noise handshakes, sealed messages, signatures, primitives over `node:crypto` |
 | `src/core/wire/` | canonical JSON, packet codec, schema validators, protocol constants |
-| `src/core/transport/` | TCP and the secure channel (Noise handshake, records, send scheduling) |
+| `src/core/transport/` | TCP, the WebSocket server for browsers (RFC 6455), and the secure channel (Noise handshake, records, send scheduling) |
 | `src/core/peer/` | the peer manager (links, admission, keepalive, redial) and the address book |
 | `src/core/discovery/` | LAN beacons, bootstrap, peer exchange, dial budgets |
 | `src/core/routing/` | link-state database, shortest paths, link metric, the forwarder |
@@ -192,11 +227,13 @@ change as the code does, so they are not recorded here.
 | `src/sync/` | ClawSync: gossip and anti-entropy for signed records |
 | `src/cast/` | ClawCast: broadcast channels |
 | `src/vault/` | ClawVault: keystore, durable stores, encrypted file transfer |
-| `src/gate/` | ClawGate: today only the control API server and console server (`api-server.js`); the relay and mailbox service is not built |
+| `src/gate/` | ClawGate: the control API and console server (`api-server.js`) and the phone web app server (`webapp-server.js`); the relay and mailbox service is not built |
 | `src/integrations/` | a verifier for signed security events from PortLock, a separate project; not used by the node |
 | `src/services.js` | the services a node starts by default |
 | `src/cli/`, `bin/clawnet.js` | the `clawnet` command and the devnet launcher |
 | `console/` | ClawView source (React, three, Vite); builds into `ui/` |
+| `web/` | the phone web app: `app/` (the page), `core/` (a browser node, a second implementation of identities, Noise, links, sync and messages), `vendor/` (the noble cryptography libraries, pinned); see `web/README.md` |
+| `scripts/` | vendoring the noble libraries, drawing the app's icons |
 | `test/` | `unit/`, `integration/` (real nodes over loopback), `e2e/` (separate processes), `helpers/`, `vectors/` |
 
 ## Limitations
@@ -213,6 +250,9 @@ know first:
 - Keys are protected by a passphrase you choose, or by file permissions only.
 - Every node stores every link-state record, which suits tens to low thousands of nodes.
 - Mailbox custody is not built; there is no NAT traversal; no code has had an external review.
+- A phone is a node only while its app is open, only through a computer on the same Wi-Fi,
+  and its app arrives over plain HTTP; its keys live in that phone's browser storage, with
+  no backup.
 
 ## Documentation
 
@@ -225,3 +265,5 @@ know first:
 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | data directory, configuration, running, backup, upgrading, troubleshooting |
 | [`docs/API.md`](docs/API.md) | the local control API and event stream |
 | [`console/README.md`](console/README.md) | building and developing the console |
+| [`web/README.md`](web/README.md) | the phone web app: how it is built, served and tested |
+| [`web/vendor/README.md`](web/vendor/README.md) | the vendored cryptography: versions, hashes, audits, how to update |

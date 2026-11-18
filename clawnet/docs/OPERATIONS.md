@@ -176,6 +176,8 @@ with short intervals; the defaults suit a real network.
 | `CLAWNET_LISTEN_HOST`, `CLAWNET_LISTEN_PORT` | `listen.host`, `listen.port` |
 | `CLAWNET_ADVERTISE` | `advertise` |
 | `CLAWNET_API_ENABLED`, `CLAWNET_API_HOST`, `CLAWNET_API_PORT`, `CLAWNET_API_ALLOW_REMOTE` | `api.*` |
+| `CLAWNET_WEBSOCKET`, `CLAWNET_WEBSOCKET_PORT` | `websocket.enabled`, `websocket.port` |
+| `CLAWNET_WEBAPP`, `CLAWNET_WEBAPP_PORT` | `webapp.enabled`, `webapp.port` |
 | `CLAWNET_BOOTSTRAP` | `discovery.bootstrap` |
 | `CLAWNET_MULTICAST`, `CLAWNET_PEX`, `CLAWNET_ALLOW_LOOPBACK` | `discovery.multicast.enabled`, `discovery.pex`, `discovery.allowLoopback` |
 | `CLAWNET_PEERS_TARGET`, `CLAWNET_PEERS_MAX` | `peers.target`, `peers.max` |
@@ -187,7 +189,7 @@ with short intervals; the defaults suit a real network.
 
 `clawnet start` flags: `--listen host:port`, `--api-port n`, `--bootstrap addr` (repeatable),
 `--network id`, `--network-key-file file`, `--multicast` or `--no-multicast`,
-`--passphrase-file file`. Run with `CLAWNET_LOG_LEVEL=warn` it logs less: checked, the effective
+`--passphrase-file file`, `--phone` (section 6a), `--websocket-port n`, `--webapp-port n`. Run with `CLAWNET_LOG_LEVEL=warn` it logs less: checked, the effective
 configuration showed `"level": "warn"`.
 
 ## 4. Running a node
@@ -321,6 +323,8 @@ stops it by running `clawnet stop` (not by killing the process).
 | `listen.port` | TCP | 47470 on `0.0.0.0` | links from other nodes | reachable from other machines |
 | `discovery.multicast.port` | UDP | 47470, group `239.255.67.78` | LAN beacons; multicast TTL 1 | local network only |
 | `api.port` | TCP | 47480 on `127.0.0.1` | control API and console | this machine only |
+| `websocket.port` | TCP (WebSocket) | 47471 on `0.0.0.0`, **off** | links from phones (browsers) | other machines, when switched on |
+| `webapp.port` | TCP (HTTP) | 47490 on `0.0.0.0`, **off** | the phone web app's files | other machines, when switched on |
 
 For other machines to link to a node, its `listen.port` must be reachable: allow inbound TCP on
 it in the host firewall and, behind a router, forward it. Nodes behind NAT can still dial out to
@@ -340,6 +344,76 @@ loopback: `--listen 127.0.0.1:47470 --no-multicast`.
 On a machine with several network interfaces, multicast may leave by the wrong one; set
 `discovery.multicast.interface` to the IPv4 address of the interface to use. Real LAN multicast
 has not been tested between machines.
+
+## 6a. Phones
+
+A phone becomes a node by opening a web page that a computer node serves (DESIGN.md
+section 16). Both halves are off by default; switch them on together:
+
+```bash
+node bin/clawnet.js start --phone
+```
+
+or in `config.json`: `"websocket": { "enabled": true }, "webapp": { "enabled": true }`, or
+with `CLAWNET_WEBSOCKET=1 CLAWNET_WEBAPP=1`. `--websocket-port` and `--webapp-port` choose
+other ports. On start the node prints, on standard error, the addresses phones can open, one
+per network address of the computer (for example `http://192.168.1.20:47490/`); the JSON
+ready line carries them as `phone.webapp`, and `clawnet status` (API `/status`) as
+`phone`.
+
+On the phone, connected to the same Wi-Fi: open that address in Safari or Chrome. On an
+iPhone, add it to the home screen first (Share, Add to Home Screen) and set it up from
+there: the home-screen app keeps its own storage, separate from Safari's. Create the
+phone's identity; on a private network type the network key (the base64 text of
+`networkKey`). The phone links to the computer and lists the nodes it can reach.
+
+Rules and limits, in plain terms:
+
+- The phone works only while the app is open and on screen. Closed or in the background,
+  it neither sends nor receives; messages to it wait (and are retried) on their senders.
+- It needs a computer node on the same network to link through. Two phones never link to
+  each other directly; each links to a computer.
+- Its keys and messages live in the browser's storage on that phone. Clearing the
+  website's data, or deleting the home-screen app, deletes them.
+- The page arrives over plain http. Anyone who can tamper with traffic on the Wi-Fi can
+  change the app before it runs (THREAT_MODEL.md section 3.7). Use it on a network you
+  trust.
+- The phone's clock and the computer's must agree within five minutes.
+- Browsers are admitted only from this node's own web app, reached by IP address,
+  `localhost` or a `.local` name. To open the app by another name, add it to
+  `webapp.allowedHosts`; to let a page served elsewhere link, list its origin in
+  `websocket.allowedOrigins`.
+- The firewall: the first time the node listens on these ports, Windows may ask whether
+  Node.js may use the network. Allow it on private networks. On the one PC where a real
+  phone was tried, Node.js already had a rule that allowed it, so the prompt itself has
+  not been observed.
+- The start-up hint names the adapter of each address. Use the Wi-Fi or Ethernet one; the
+  addresses of virtual adapters (WSL, Hyper-V, VMware, VirtualBox, Docker) are listed
+  apart, because a phone cannot reach them.
+- The phone's identity belongs to the exact address it opened, such as
+  `http://192.168.1.20:47490`. If the computer gets another address from the router, the
+  app at the new address starts over as a new node. Give the computer a fixed address (a
+  reservation in the router's DHCP settings) before you rely on a phone.
+- If the hint printed at start says only this computer can open the app, `webapp.host` or
+  `websocket.host` is a loopback address; set both to `0.0.0.0`, the default.
+- If the phone cannot open the page, or shows "Can't reach the computer", check in this
+  order:
+  1. The node is running and was started with `--phone`.
+  2. The phone is on the same Wi-Fi as the computer: not on mobile data, and not on a guest
+     network, which usually keeps devices from reaching each other. Some routers do the
+     same on the main network under a name such as "AP isolation" or "client isolation".
+  3. Windows treats the Wi-Fi as a private network. An "allow on private networks" rule
+     does nothing while the network's profile is Public: Settings, Network & internet,
+     Wi-Fi, the network's properties, Network profile type, Private.
+  4. The firewall rule for Node.js was not refused earlier. Windows Security, Firewall &
+     network protection, Allow an app through firewall: Node.js needs a tick under
+     Private.
+  5. The computer's address has not changed since the phone opened the app.
+- While the computer's node is not running, the home-screen app has nothing to load and
+  shows Safari's own error page. Start the node and open the app again.
+- It has been tried on one real phone, once: the owner's iPhone, on their home Wi-Fi,
+  against a node on their PC, on 18 November 2026. It linked, and a message went each way
+  (THREAT_MODEL.md section 3.7).
 
 ## 7. A private network
 

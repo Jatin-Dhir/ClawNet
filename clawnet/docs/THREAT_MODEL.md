@@ -20,7 +20,12 @@ Read it with these facts in mind:
 - Cryptographic primitives are OpenSSL's, through `node:crypto`: X25519, Ed25519,
   ChaCha20-Poly1305, SHA-256, HMAC-SHA256, HKDF-SHA256, and scrypt for the passphrase. The
   engine composes them as Noise patterns and signed, domain-separated messages. It does not
-  implement any primitive itself.
+  implement any primitive itself. The phone web app (section 3.7) runs the same
+  compositions in a browser on the audited noble libraries instead, vendored at pinned
+  versions (`web/vendor/README.md`).
+- **The phone web app has run on one phone, once.** On 18 November 2026 the owner set it up
+  on their iPhone, over their home Wi-Fi, against a computer node on their PC; it linked
+  and messages went both ways. No hostile case was tried on a phone (section 3.7).
 
 ## 1. What the engine protects
 
@@ -278,6 +283,104 @@ is the only protection. Without it they cannot read the identity keys or any sea
 **Cannot:** use the stolen directory to read other nodes' traffic, and cannot read messages
 the node never received. A stolen identity cannot be revoked (section 5).
 
+### 3.7 Phones: the web app and the WebSocket port
+
+With `clawnet start --phone` (or `websocket.enabled` and `webapp.enabled`), a computer
+node opens two more ports on every interface: the WebSocket port (47471), which carries
+ordinary links, and the web app port (47490), which serves the phone app over plain HTTP
+(`DESIGN.md` section 16). Both are off by default. A phone that opens the app becomes a
+node of its own, with its own identity, linked to that computer. It is not a remote
+control: the control API stays on 127.0.0.1 behind its token, and nothing on either new
+port reaches it.
+
+**Someone on the same Wi-Fi can:**
+
+- **Change the app on its way to the phone.** It is served over plain HTTP, so nothing
+  checks that the code the phone runs is the code the computer sent. A changed app runs
+  with the phone's keys: it can read them and the network key, and read and send messages
+  as the phone. This is the largest limit of the phone app, and no header removes it. Use
+  it only on a network you trust, such as a home Wi-Fi with WPA2 or WPA3 and no strangers'
+  devices, never on public Wi-Fi.
+- Read the app's files and `/config.json`: the network id, whether a network key is
+  needed (never the key), the WebSocket port and the software version. Nothing secret.
+- Link to the WebSocket port like any other node. Links over it pass the same Noise
+  handshake, card checks, admission rules and rate limits as links over TCP, so section
+  3.2 applies unchanged.
+- Hold connection slots: at most 8 sockets per address and 128 in all on the WebSocket
+  port, 16 and 64 on the web app port; a socket that sends nothing is closed after 10
+  seconds, and request headers must arrive within 10 seconds. A few machines on the network
+  can still keep the phones out while they keep at it.
+- If the computer has an address reachable from the internet (no NAT, or IPv6 without a
+  firewall), anyone on the internet can do the same: neither listener filters by source
+  address. Keep the Windows firewall rule for Node.js to private networks.
+
+**A web page the phone's or the computer's user visits cannot:**
+
+- Use the browser to link to the WebSocket port. A browser always sends `Origin`, and pages
+  cannot forge it. The port admits a browser only from the node's own web app (the host
+  name the browser used, the web app's port, and a name that passes the `Host` rule below)
+  or from an origin listed in `websocket.allowedOrigins`. A client that sends no `Origin`
+  is not a browser and is treated like a TCP connection.
+- Reach the app through DNS rebinding. The web app server answers only when `Host` is an IP
+  address, `localhost`, a `.local` or `.home.arpa` name, or one listed in
+  `webapp.allowedHosts`: names nobody outside can point at this machine. Others get 421.
+- Inject script into the app. Every response carries a Content-Security-Policy that allows
+  scripts, styles and images from the app's own origin only and connections to that origin
+  and this node's WebSocket port; the app has no inline script or style. Message text and
+  names are inserted as text, never as markup.
+
+**The computer the phone links to can:**
+
+- Run any code on the phone, because it serves the app. The app is not signed or pinned: a
+  phone trusts the computer it loads the app from as a desktop user trusts the software they
+  install.
+- See whom the phone writes to and when, and drop or delay its packets, as any forwarder
+  can (section 3.4). It cannot read end-to-end messages between the phone and other nodes.
+- Not freeze the phone with traffic, within these bounds: at most 20 messages a second are
+  opened (40 at once), at most 300 records new to the phone are accepted a minute (each
+  costs signature checks), and nothing but a `BYE` is queued once 4 MiB wait unsent.
+
+**A hostile member of the network can:**
+
+- Write to the phone, as any member can write to any node. Conversations are capped at 100,
+  300 messages each and about a million characters in all; the least recent give way
+  first, so a flood from many fresh identities can push out real conversations.
+- Publish records for many invented nodes. The phone keeps the records of the computer it
+  links to and of the nodes it has exchanged messages with ahead of others, and refuses
+  peer records numbered ahead of the clock; the 4096-entry tables can still fill with
+  invented nodes.
+- Make a message appear twice only after it has left both the replay cache (5000 entries)
+  and the conversation's history; until then a duplicate is acknowledged again and not
+  shown.
+
+**The phone's keys** (the Ed25519 identity key, the two X25519 keys and the network key)
+are kept unencrypted in the browser's storage for the app's origin, `http://<computer
+address>:47490`. Anyone holding the unlocked phone, any script that runs in that origin,
+and any backup of the browser's data has them. The storage belongs to that exact address
+and port: if the computer's address changes, the app at the new address is a new origin
+and the phone sets up again as a new node. On iPhone, the home-screen app has storage of its
+own, separate from Safari's. Clearing the website's data deletes the identity, and there is
+no export yet. Safari may also clear a site's data after some days without a visit; the
+home-screen app is the intended way to use it (not verified on a device).
+
+**Cryptography in the browser.** The noble libraries are audited and pinned by hash, but
+JavaScript gives no guarantee of constant-time execution; a timing side channel inside the
+phone's browser is possible in principle. Randomness comes from `crypto.getRandomValues`,
+which browsers provide on plain HTTP pages. One known difference: noble's Ed25519
+verification is cofactored and OpenSSL's is cofactorless, so a signer can craft a signature
+over its own record that phones accept and computers refuse, or the reverse. Honest
+signatures verify the same way in both. A phone relays nothing, so such a record changes
+only that phone's view of that signer (`DESIGN.md` section 16, point 8).
+
+**Tried on a phone once.** On 18 November 2026 the owner opened the app on their iPhone,
+on their home Wi-Fi, from a computer node on their PC, and set it up. The computer saw a
+WebSocket link from the phone's address, the phone's message arrived, and the computer's
+reply was acknowledged by the phone. That is all: no hostile case was tried against a
+phone, nor another iPhone or iOS version, nor Android, nor a link between two computers.
+Besides that one try, the browser code ran under Node against real nodes
+(interoperability tests) and in the Claude desktop app's Chromium browser at 375 by 812
+pixels against nodes on the same computer over loopback.
+
 ## 4. What the tests demonstrate
 
 All of this ran on one machine over loopback, in automated tests, and in CI on Linux,
@@ -300,6 +403,16 @@ Windows and macOS runners (see `README.md` for what CI has and has not run):
 - The API refuses requests without a token, with a foreign `Host`, and with a foreign
   `Origin`, and rate-limits failed authentication (`api.test.js`, `gate-api-server.test.js`).
 - Unit tests of each validator, codec, signature check and rate limiter, with hostile input.
+- The browser code gives the engine's bytes: the published Noise vectors, a `Noise_XXpsk0`
+  handshake byte-identical to the engine's, and the same encodings, signatures, validators
+  and sealed messages; the browser node links to a real node over WebSocket and messages
+  pass both ways, through a second node too (`web-*.test.js`, `phone.test.js`).
+- The WebSocket port refuses bad upgrades, foreign origins, unmasked or oversized frames,
+  floods of empty fragments and silent sockets, and survives clients that reset after a
+  refusal; the web app server refuses foreign `Host` names and serves nothing outside its
+  file table (`transport-websocket.test.js`, `gate-webapp-server.test.js`).
+- The phone's messenger caps conversations, rate-limits what it opens and does not show a
+  replayed message twice (`web-messenger.test.js`).
 
 It does **not** demonstrate resistance to a real attacker. In particular there is no test
 that runs hostile software against a node, no fuzzing run beyond the unit tests'
@@ -350,3 +463,13 @@ expect protection that is not there.
 16. **Everything above assumes the implementation matches the design.** The tests check many
     properties; they do not prove the absence of bugs. A cryptographic or parsing bug in this
     code would not be caught by an outside party, because none has read it.
+17. **The phone app is served over plain HTTP.** Whoever can tamper with traffic on the
+    Wi-Fi can replace it and take the phone's keys (section 3.7). There is no HTTPS option
+    yet.
+18. **A phone's keys live unencrypted in browser storage**, tied to the computer's address
+    and port, with no backup or export. Losing the storage loses the identity.
+19. **A phone is a node only while the app is open and in front**, and only through a
+    computer on the same network. There is no background operation, no phone-to-phone
+    link, and no link without Wi-Fi (Bluetooth, Wi-Fi Direct, LoRa).
+20. **The WebSocket and web app ports accept connections from any address** that can reach
+    them; only the operating system's firewall keeps them to the local network.

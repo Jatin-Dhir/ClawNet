@@ -44,3 +44,73 @@ in `transport-secure-channel.test.js` and one in `peer-manager.test.js`. The fou
 the fixes (the huge counter, the stuck verification, the BYE socket and the learned DNS
 dial) were each run against the old code and failed there. The other two cover the changes
 made for open findings: the stream table and the offer time-out.
+
+# Review of the phone node
+
+On 18 November 2026, after the phone web app was built (`docs/DESIGN.md` section 16), two
+reviews ran on it, each by a separate AI agent (Claude Sonnet), not by a person:
+
+- a **security** review of the new code: the WebSocket transport, the web app server, the
+  configuration and start-up changes, and the browser node in `web/core`. It reproduced
+  what it could with throwaway scripts against the real code and said where it only traced
+  a path.
+- an **interface** review of the app in `web/app`, for accessibility, layout, wording,
+  type, colour and polish. Its verdict was "block" for two findings, both fixed below.
+
+Nobody has reviewed this code who did not also help write it, and **nothing has run on a
+real phone**.
+
+## Security findings
+
+10 findings: 2 high, 5 medium (one of them medium-to-low), 2 low and 1 informational. **6
+are fixed, 3 are partly fixed with the rest open, and 1 is open.**
+
+| Severity | Where | What is wrong | Status |
+| --- | --- | --- | --- |
+| High | `src/core/transport/websocket.js`, upgrade handling | Node's HTTP server removes its own error handler from a socket before handing it to `upgrade`. A client that sent a refused upgrade (bad origin, path or subprotocol) and then reset the connection raised an uncaught `ECONNRESET` that stopped the node. Anyone who could reach the port could do it. | **Fixed.** Every socket gets an error handler when it connects. Test: `transport-websocket.test.js`, "a client that resets the connection after a refused upgrade...". Run against the old code, it failed with the uncaught `ECONNRESET`. |
+| High | `websocket.js`, message reassembly | The message limit counted payload bytes only, so a client could send endless empty fragments; the reviewer took the server to 3.3 GB of memory in 6 seconds from one connection. | **Fixed.** A message may have at most 64 fragments (close code 1009). Tests: "more fragments than allowed, all of them empty..." and "a message in as many fragments as allowed arrives whole". Not run against the old code. |
+| Medium | `websocket.js` and `src/gate/webapp-server.js`, before the HTTP request | Node's header deadlines start with the first byte, so sockets that sent nothing stayed open for good; a few machines could fill every slot and keep phones out. | **Fixed.** A silent socket is closed after the handshake deadline (WebSocket port) or 10 seconds (web app server); an upgraded link is not affected. Tests: "a socket that never sends a byte..." in both test files, "an upgraded connection may stay quiet...". |
+| Medium | `websocket.js` pongs; `web/core/channel.js` PONG packets | A client that pings without reading made the server queue pongs without limit; a computer could do the same to a phone with ClawNet PINGs, which bypassed the phone's 4 MiB send cap. | **Fixed.** The server skips pongs while 64 KiB wait to be sent; the phone queues nothing but a `BYE` beyond 4 MiB. No test: it needs a client that stops reading at the right moment, which does not run reliably over loopback. |
+| Medium | `web/core/messenger.js`, conversations | The cap on conversations never evicted anything (the new conversation sorted last and was then spared), so any sender could add conversations without limit and fill the browser's storage; failed writes were silent and could drop the replay cache and the outbox. | **Fixed.** The least recent conversation is evicted after the new message is added, never the current one; stored conversations are capped at about a million characters; a refused write is counted and the app says so once. Tests: `web-messenger.test.js`. |
+| Medium | `web/core/messenger.js`, `web/core/node.js` | The phone had no budget for inbound work. Opening a message costs a key agreement and two signature checks, and a computer could make it check up to 10,000 new records a minute, freezing the page. | **Partly fixed.** At most 20 messages a second are opened (40 at once), and at most 300 new records a minute are accepted from the computer. Test: "messages beyond the opening allowance are dropped...". **Open:** no check of a duplicate body before opening it, and a large sync page is still checked in one go without yielding to the page. |
+| Medium to low | `web/core/node.js`, the record tables | Neither table had priorities and peer records' `seq` was unbounded, so a hostile node could publish thousands of invented origins with a huge `seq` and push out real contacts' cards. | **Partly fixed.** The linked computer and remembered nodes (the computers linked to and the nodes messages were exchanged with) take priority when a table is full; a peer record numbered more than the clock skew ahead of the clock is refused; contacts' cards are remembered apart from the tables; saved records keep remembered nodes first. **Open:** the tables can still fill with invented nodes, which pushes out nodes the phone has not talked with yet. This is the Sybil problem the design lists as a non-goal, and the engine was not changed. No test of its own. |
+| Low | `web/core/messenger.js`, replay cache | The replay cache holds 5000 entries. After a flood of valid messages, an old recorded message could be replayed and shown again. | **Partly fixed.** A message still in its conversation's history counts as a duplicate: it is acknowledged again and not shown. Test: "a message still in its conversation is not shown twice...". **Open** beyond the history (300 messages per conversation); the engine's open finding above is the same. |
+| Low | `src/core/config.js`, listener defaults | Both new listeners bind `0.0.0.0` and do not filter by source address, so a computer with a public address exposes them to the internet. | **Open.** Documented in `THREAT_MODEL.md` (section 3.7, limitation 20). A filter for private addresses was considered and not added: it would refuse phones that reach the computer by a global IPv6 address on the same network, and that trade-off needs a decision. |
+| Informational | browser storage, plain HTTP, noble verification | The phone's keys sit unencrypted in browser storage, the app arrives over plain HTTP, and noble's Ed25519 verification is cofactored where OpenSSL's is cofactorless. | **Open, documented.** These are limits of the approach (`THREAT_MODEL.md` section 3.7, limitations 17 and 18; `DESIGN.md` section 16, point 8). |
+
+The reviewer also checked and found sound: the Origin and Host rules (15 hostile cases,
+including `null`, user-info tricks, decimal and hex addresses and rebinding-style names),
+the web app server (no path traversal, since it looks paths up in a fixed table; nothing
+secret served), the app's handling of message text and names (no markup injection), the
+control API (unchanged), and the protocol checks (the destination and id bound into the
+sealed message, acknowledgements accepted only from the destination, forged records of the
+phone's own origin refused).
+
+## Interface findings
+
+The review read the app's code and looked at it at phone size in a Chromium browser.
+
+| Severity | What was wrong | Status |
+| --- | --- | --- |
+| High | Input fields in a monospace font were 15 pixels, under the 16 at which iPhone Safari zooms the page on focus. | **Fixed:** every field uses the 17-pixel body size. |
+| High | "The computer is on a different network" and "The computer does not accept this phone" named no way out. | **Fixed:** each now says what to do (set the phone up again; ask whoever runs the computer to allow it, with where to find the phone's id). |
+| Medium | The node list's accessible names replaced the visible text; the conversation announced its whole history on opening; toasts were not announced reliably; a sent or received message did not say who sent it to a screen reader; focus stayed behind when a conversation opened. | **Fixed.** Names come from the visible text plus a hidden state; the message log turns its announcements on after its first drawing; toasts go through the page's announcer; each message carries a hidden "You" or the sender's name; focus moves to the page. The names, the log, the hidden senders and the focus were checked in the browser; no screen reader was used. |
+| Medium | The app gave up when the computer was not answering at start, though the phone's identity and messages are on the phone. | **Fixed** in code, not tried in a browser: it opens with the last settings the computer gave and keeps trying to link; with none, it reloads when the network returns. |
+| Medium | Copy failures and a few labels were vague; small text in the node list and messages was below the type scale; the link card and the "This phone" page redrew every second. | **Fixed.** |
+
+## What was run for the phone node
+
+On the same Windows machine, over loopback only (Node 26.12). After all the fixes above,
+`npm test` gave 1307 tests, 1303 passed, 0 failed, 4 skipped (the POSIX permission tests),
+and the 95 tests in the phone-related files passed three more times in a row.
+`npx eslint clawnet` reports no errors and no warnings. The page was opened in the Claude
+desktop app's Chromium browser at 375 by 812 pixels against two nodes on the same machine:
+set-up, the node list, a conversation two hops away (delivered, then answered) and "This
+phone" were checked by hand, before and after the interface fixes.
+
+After the fixes, on 18 November 2026, the owner tried it on their iPhone, over their home
+Wi-Fi, against a node on their PC started with `--phone`. The PC's node showed an inbound
+WebSocket link from the phone's address with the phone's agent (`clawnet-web/0.1.0`) and
+no relay, mailbox or transit capability; the phone's message arrived; and the PC's reply
+was marked delivered, which needs the phone's acknowledgement. Nothing ran on Android, on
+another iPhone, or between two computers.

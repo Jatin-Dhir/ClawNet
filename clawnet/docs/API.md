@@ -276,6 +276,7 @@ built, so `GET /mailbox` and the custody events of section 8.5 do not exist.
 | `messaging` | `{ outbox, outboxBytes, waiting }` integers | |
 | `events` | `{ lastSeq, oldestSeq }` integers | range held by the ring buffer |
 | `services` | string[] | |
+| `phone` | `{ websocket: string \| null, webapp: string[] \| null }` | phone support (DESIGN.md section 16): the WebSocket listener as `host:port`, and the URLs phones can open the app at; each `null` while off |
 | `asOf` | `{ boot, seq }` | |
 
 ```json
@@ -289,7 +290,8 @@ built, so `GET /mailbox` and the custody events of section 8.5 do not exist.
   "routing": { "rev": 41, "nodes": 3, "reachable": 2, "lsaSeq": 1794787320113 },
   "messaging": { "outbox": 1, "outboxBytes": 612, "waiting": 0 },
   "events": { "lastSeq": 1042, "oldestSeq": 1 },
-  "services": ["messages", "diag", "cast", "files", "api"],
+  "services": ["messages", "diag", "cast", "files", "webapp", "api"],
+  "phone": { "websocket": "0.0.0.0:47471", "webapp": ["http://192.168.1.20:47490/"] },
   "asOf": { "boot": "9f2c1a7b", "seq": 1042 }
 }
 ```
@@ -327,6 +329,7 @@ No private key is ever returned by any endpoint.
 | `id` | NodeId | |
 | `linkId` | string | a decimal number that increases with every link this node makes; treat it as opaque |
 | `direction` | `"in"` \| `"out"` | who dialed |
+| `transport` | `"tcp"` \| `"ws"` | how the link is carried: TCP, or a WebSocket from a browser, such as a phone running the web app (always `"in"`) |
 | `addr` | Address | remote socket address |
 | `agent` | string | |
 | `caps` | `{ relay, mailbox, transit }` | as stated in the handshake |
@@ -886,7 +889,7 @@ data: {"boot":"9f2c1a7b","nodeId":"fxl7tt5ojvwq5qk5m7nd6ekswwt4hjukrlt2qwnkyns2k
 
 id: 9f2c1a7b-1043
 event: link.up
-data: {"seq":1043,"ts":1794787330120,"type":"link.up","data":{"peer":"v5lj76hrnxzwb4die5j65gbjlhis646zpsg4lvyqteji7invg5iq","linkId":"4","direction":"in","addr":"tcp://192.168.1.44:51522","agent":"clawnet/0.1.0","caps":{"relay":true,"mailbox":false,"transit":true},"rttMs":2.2,"cost":3}}
+data: {"seq":1043,"ts":1794787330120,"type":"link.up","data":{"peer":"v5lj76hrnxzwb4die5j65gbjlhis646zpsg4lvyqteji7invg5iq","linkId":"4","direction":"in","transport":"tcp","addr":"tcp://192.168.1.44:51522","agent":"clawnet/0.1.0","caps":{"relay":true,"mailbox":false,"transit":true},"rttMs":2.2,"cost":3}}
 
 : ka
 
@@ -963,7 +966,7 @@ names the emitting module.
 | `peer.dialing` | `{ addr, peer: NodeId \| null, source, attempt }` |
 | `peer.dial_failed` | `{ addr, peer: NodeId \| null, reason, retryInMs: integer \| null }` (`retryInMs` is null when the address will not be redialled) |
 | `peer.refused` | `{ addr, peer, direction, reason }` |
-| `link.up` | `{ peer, linkId, direction, addr, agent, caps, rttMs, cost }` |
+| `link.up` | `{ peer, linkId, direction, transport, addr, agent, caps, rttMs, cost }`; `transport` as in PeerInfo |
 | `link.down` | `{ peer, linkId, reason, remote: boolean, durationMs }`; `reason` is a BYE reason (ARCHITECTURE.md 4.1), or `auth`, `eof`, `socket`, `overflow` or `unknown` |
 | `link.metric` | `{ peer, rttMs: number \| null, srttMs, cost, misses }` once per keepalive per link |
 | `link.throttled` | `{ peer, by: "packets" \| "bytes" }` |
@@ -972,6 +975,7 @@ names the emitting module.
 | `peer.record` | `{ peer, seq, addrs: Address[], caps }` |
 | `peer.equivocation` | `{ peer, seq }` two different valid peer records of one origin with one `seq` |
 | `discovery.clone_suspected` | `{ peer, seq, bumps }` another node appears to use this node's identity; `peer` is this node |
+| `websocket.refused` | `{ ip, status, reason, suppressed }` an upgrade request on the WebSocket port was refused before any handshake; `reason` is `method`, `http-version`, `path`, `upgrade`, `connection`, `version`, `key`, `subprotocol` or `origin`; at most one a second, `suppressed` counts the refusals left out since the last |
 
 **Routing**
 

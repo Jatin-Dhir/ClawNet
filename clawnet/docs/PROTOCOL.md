@@ -5,8 +5,10 @@ written from the code, not from the design: where it differs from `DESIGN.md` or
 `ARCHITECTURE.md`, the code is what is described here, and the difference is a bug in one
 of the documents. The code that defines each part is named at the start of its section.
 
-There is exactly one implementation of this protocol, this one. No second implementation
-has ever talked to it, so nothing here has been checked for interoperability. The test
+There are two implementations: the engine, and since 18 November 2026 the browser node in
+`web/core`, which implements what a phone needs (sections 2 to 7, 9 and 10 for the `lsa`
+and `peer` datasets). The second was written by the same author from this document and the
+engine's code, so agreement between them is evidence, not independent proof. The test
 vectors in `test/vectors/` check the Noise handshakes `XX` and `X` and canonical JSON
 against outside sources. The handshake `XXpsk0`, which private networks use for links,
 has no published vector; see section 3.5.
@@ -215,6 +217,43 @@ buckets (`limits.peerPacketsPerSec`, `peerBytesPerSec` for control; `dataPackets
 until the bucket refills; it does not disconnect. A routed packet over budget is dropped and
 counted, and the neighbour is not disconnected, because it may only be relaying someone
 else's flood. Breaking a hard limit of the codec (section 4) disconnects.
+
+### 3.7 Links over WebSocket
+
+Code: `src/core/transport/websocket.js` (server), `web/core/channel.js` (the browser's side).
+
+A browser cannot open a TCP connection, so a node can also accept links over WebSocket
+(RFC 6455) on a separate, opt-in port (`websocket.enabled`, default port 47471). A WebSocket
+link is the same link: sections 3.1 to 3.6 apply unchanged.
+
+- **Upgrade.** `GET /` over HTTP/1.1 with `Upgrade: websocket`, `Connection: Upgrade`,
+  `Sec-WebSocket-Version: 13`, a `Sec-WebSocket-Key` of 16 bytes in base64, and the
+  subprotocol `clawnet.1` among those offered (`Sec-WebSocket-Protocol`), which the server
+  echoes. No extension is negotiated. Refusals are plain HTTP: 400, 403 (Origin), 404
+  (path), 405, 426 (version, with `Sec-WebSocket-Version: 13`); a request that is not an
+  upgrade gets 426.
+- **Origin.** A request without `Origin` is not from a browser and is admitted like a TCP
+  connection. One with `Origin` is admitted if the origin is listed in
+  `websocket.allowedOrigins`, or if it is the node's own web app: same host name as the
+  request's `Host`, the web app's port, and a host name that is an IP address,
+  `localhost`, a `.local` or `.home.arpa` name, or one of `webapp.allowedHosts`.
+- **Mapping.** Binary messages carry the bytes of the link stream in order: the
+  handshake's `u16be length || Noise message` and then the transport records, exactly as on
+  TCP. Message boundaries have no meaning; a sender may split or join the stream as it
+  likes. Text messages are refused (close 1003). The browser sends each handshake message
+  and each record as one message.
+- **Frames.** Client frames must be masked and minimally length-encoded, with the RSV bits
+  clear; control frames are at most 125 bytes and unfragmented; a message is at most
+  256 KiB (close 1009). Pings are answered with pongs; liveness is the link's own PING and
+  PONG (section 5). A close frame is answered with one, and the connection ends. Any
+  violation sends a close frame with the RFC's code and ends the connection.
+- **Limits before the handshake.** At most 8 sockets per IP address and 96 in total on the
+  port (`peers.max` plus 32), request headers within the handshake timeout and 8 KiB. After
+  the upgrade the peer manager's limits apply as for TCP.
+- **What a browser node announces.** `listen: []`, `observed: null` (a browser cannot see
+  the socket's address), `caps: { relay: false, mailbox: false, transit: false }`, agent
+  `clawnet-web/0.1.0`. The link is reported with `transport: "ws"` in `link.up` and in the
+  peer list; `addr` is the TCP connection underneath, `tcp://ip:port`.
 
 ## 4. Packets and frames
 
@@ -846,8 +885,8 @@ interrupted transfer resumes without resending what was acknowledged.
   outbox's `custodian` and `custodyState` fields) exist. The service that would use them,
   designed in `ARCHITECTURE.md` section 8.3 (`custody-deposit` and `custody-result` messages,
   deposit quotas, receipts), has not been built, so no wire format for it is defined here.
-- **NAT traversal, relays for unreachable nodes, other transports.** TCP direct dial and LAN
-  multicast only.
+- **NAT traversal, relays for unreachable nodes, other transports.** TCP direct dial, LAN
+  multicast, and inbound WebSocket for browsers (section 3.7) only.
 - **Version negotiation.** The handshake has a single version, 1. There is no mechanism for
   two versions to coexist on one link.
 - **Anything about a second implementation.** The wire format is defined by this code.
